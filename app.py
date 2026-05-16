@@ -17,7 +17,10 @@ from pipeline import (
     SECTOR_DEPARTMENTS,
     SECTOR_COLORS,
     STATE_CENTERS,
+    DISTRICT_COORDINATES,
 )
+import math
+import numpy as np
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -425,6 +428,39 @@ with map_col:
             height=540,
         )
         fig.update_traces(marker=dict(opacity=0.82, sizemode="area"))
+
+        # ── District boundary halo — visual cue showing focus area ──────────
+        if drill_level in ("district", "block") and selected_state in DISTRICT_COORDINATES:
+            if selected_district in DISTRICT_COORDINATES[selected_state]:
+                c = DISTRICT_COORDINATES[selected_state][selected_district]
+                # Approximate district radius (~25 km for most Indian districts)
+                radius_km = 25 if drill_level == "district" else 8
+                # 1° lat ≈ 111 km; 1° lon ≈ 111 km × cos(lat)
+                r_lat = radius_km / 111.0
+                r_lon = radius_km / (111.0 * math.cos(math.radians(c["lat"])))
+                circle_lats = [c["lat"] + r_lat * math.sin(t) for t in np.linspace(0, 2*math.pi, 60)]
+                circle_lons = [c["lon"] + r_lon * math.cos(t) for t in np.linspace(0, 2*math.pi, 60)]
+                fig.add_trace(go.Scattermapbox(
+                    lat=circle_lats, lon=circle_lons,
+                    mode="lines",
+                    line=dict(width=2, color="rgba(52, 152, 219, 0.6)"),
+                    fill="toself",
+                    fillcolor="rgba(52, 152, 219, 0.06)",
+                    hoverinfo="skip",
+                    showlegend=False,
+                    name=f"{selected_district} boundary",
+                ))
+                # Marker at district centre
+                fig.add_trace(go.Scattermapbox(
+                    lat=[c["lat"]], lon=[c["lon"]],
+                    mode="markers+text",
+                    marker=dict(size=14, color="#1A5276", symbol="circle"),
+                    text=[f"📍 {selected_district}"],
+                    textposition="top right",
+                    textfont=dict(size=11, color="#1A5276"),
+                    hoverinfo="skip",
+                    showlegend=False,
+                ))
 
     fig.update_layout(
         margin=dict(l=0, r=0, t=5, b=0),

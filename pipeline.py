@@ -340,6 +340,215 @@ STATE_CENTERS: Dict[str, Dict[str, float]] = {
 }
 
 # ---------------------------------------------------------------------------
+# DISTRICT & BLOCK COORDINATES — real lat/lon for precise placement
+# ---------------------------------------------------------------------------
+
+DISTRICT_COORDINATES: Dict[str, Dict[str, Dict[str, float]]] = {
+    "Uttar Pradesh": {
+        "Lucknow":   {"lat": 26.8467, "lon": 80.9462},
+        "Agra":      {"lat": 27.1767, "lon": 78.0081},
+        "Varanasi":  {"lat": 25.3176, "lon": 82.9739},
+        "Kanpur":    {"lat": 26.4499, "lon": 80.3319},
+        "Prayagraj": {"lat": 25.4358, "lon": 81.8463},
+        "Gorakhpur": {"lat": 26.7606, "lon": 83.3732},
+    },
+    "Maharashtra": {
+        "Mumbai":     {"lat": 19.0760, "lon": 72.8777},
+        "Pune":       {"lat": 18.5204, "lon": 73.8567},
+        "Nagpur":     {"lat": 21.1458, "lon": 79.0882},
+        "Nashik":     {"lat": 20.0060, "lon": 73.7908},
+        "Aurangabad": {"lat": 19.8762, "lon": 75.3433},
+        "Solapur":    {"lat": 17.6599, "lon": 75.9064},
+    },
+    "Rajasthan": {
+        "Jaipur":  {"lat": 26.9124, "lon": 75.7873},
+        "Jodhpur": {"lat": 26.2389, "lon": 73.0243},
+        "Udaipur": {"lat": 24.5854, "lon": 73.7125},
+        "Kota":    {"lat": 25.2138, "lon": 75.8648},
+        "Ajmer":   {"lat": 26.4499, "lon": 74.6399},
+        "Bikaner": {"lat": 28.0229, "lon": 73.3119},
+    },
+    "Madhya Pradesh": {
+        "Bhopal":   {"lat": 23.2599, "lon": 77.4126},
+        "Indore":   {"lat": 22.7196, "lon": 75.8577},
+        "Jabalpur": {"lat": 23.1815, "lon": 79.9864},
+        "Gwalior":  {"lat": 26.2183, "lon": 78.1828},
+        "Rewa":     {"lat": 24.5325, "lon": 81.3023},
+    },
+    "Bihar": {
+        "Patna":       {"lat": 25.5941, "lon": 85.1376},
+        "Samastipur":  {"lat": 25.8624, "lon": 85.7810},
+        "Muzaffarpur": {"lat": 26.1197, "lon": 85.3910},
+        "Gaya":        {"lat": 24.7960, "lon": 84.9994},
+        "Bhagalpur":   {"lat": 25.2425, "lon": 86.9842},
+        "Darbhanga":   {"lat": 26.1542, "lon": 85.8918},
+    },
+    "Karnataka": {
+        "Bangalore Urban": {"lat": 12.9716, "lon": 77.5946},
+        "Mysore":          {"lat": 12.2958, "lon": 76.6394},
+        "Hubli-Dharwad":   {"lat": 15.3647, "lon": 75.1240},
+        "Belagavi":        {"lat": 15.8497, "lon": 74.4977},
+        "Mangaluru":       {"lat": 12.9141, "lon": 74.8560},
+    },
+    "Tamil Nadu": {
+        "Chennai":     {"lat": 13.0827, "lon": 80.2707},
+        "Coimbatore":  {"lat": 11.0168, "lon": 76.9558},
+        "Madurai":     {"lat":  9.9252, "lon": 78.1198},
+        "Salem":       {"lat": 11.6643, "lon": 78.1460},
+        "Tirunelveli": {"lat":  8.7139, "lon": 77.7567},
+    },
+    "West Bengal": {
+        "Kolkata":     {"lat": 22.5726, "lon": 88.3639},
+        "Howrah":      {"lat": 22.5840, "lon": 88.3423},
+        "Burdwan":     {"lat": 23.2324, "lon": 87.8615},
+        "Darjeeling":  {"lat": 27.0410, "lon": 88.2663},
+        "Murshidabad": {"lat": 24.1830, "lon": 88.2710},
+    },
+    "Gujarat": {
+        "Ahmedabad":   {"lat": 23.0225, "lon": 72.5714},
+        "Surat":       {"lat": 21.1702, "lon": 72.8311},
+        "Rajkot":      {"lat": 22.3039, "lon": 70.8022},
+        "Vadodara":    {"lat": 22.3072, "lon": 73.1812},
+        "Gandhinagar": {"lat": 23.2156, "lon": 72.6369},
+    },
+    "Andhra Pradesh": {
+        "Visakhapatnam": {"lat": 17.6868, "lon": 83.2185},
+        "Guntur":        {"lat": 16.3067, "lon": 80.4365},
+        "Kurnool":       {"lat": 15.8281, "lon": 78.0373},
+        "Chittoor":      {"lat": 13.2172, "lon": 79.1003},
+    },
+    "Telangana": {
+        "Hyderabad": {"lat": 17.3850, "lon": 78.4867},
+        "Warangal":  {"lat": 17.9784, "lon": 79.5941},
+        "Khammam":   {"lat": 17.2473, "lon": 80.1514},
+        "Nizamabad": {"lat": 18.6725, "lon": 78.0941},
+    },
+    "Odisha": {
+        "Khurda":     {"lat": 20.1812, "lon": 85.6195},
+        "Cuttack":    {"lat": 20.4625, "lon": 85.8830},
+        "Sundargarh": {"lat": 22.1217, "lon": 84.0297},
+        "Puri":       {"lat": 19.8135, "lon": 85.8312},
+    },
+    "Punjab": {
+        "Ludhiana":  {"lat": 30.9010, "lon": 75.8573},
+        "Amritsar":  {"lat": 31.6340, "lon": 74.8723},
+        "Patiala":   {"lat": 30.3398, "lon": 76.3869},
+        "Jalandhar": {"lat": 31.3260, "lon": 75.5762},
+    },
+    "Haryana": {
+        "Gurugram":  {"lat": 28.4595, "lon": 77.0266},
+        "Faridabad": {"lat": 28.4089, "lon": 77.3178},
+        "Hisar":     {"lat": 29.1492, "lon": 75.7217},
+        "Ambala":    {"lat": 30.3782, "lon": 76.7767},
+    },
+    "Delhi": {
+        "South Delhi": {"lat": 28.5355, "lon": 77.2390},
+        "North Delhi": {"lat": 28.7041, "lon": 77.2025},
+        "East Delhi":  {"lat": 28.6358, "lon": 77.2965},
+        "West Delhi":  {"lat": 28.6663, "lon": 77.0667},
+    },
+    "Jharkhand": {
+        "Ranchi":          {"lat": 23.3441, "lon": 85.3096},
+        "Dhanbad":         {"lat": 23.7957, "lon": 86.4304},
+        "East Singhbhum":  {"lat": 22.8046, "lon": 86.2029},
+        "Hazaribagh":      {"lat": 23.9925, "lon": 85.3637},
+    },
+    "Assam": {
+        "Kamrup Metro": {"lat": 26.1445, "lon": 91.7362},
+        "Dibrugarh":    {"lat": 27.4728, "lon": 94.9120},
+        "Cachar":       {"lat": 24.8333, "lon": 92.7789},
+        "Nagaon":       {"lat": 26.3460, "lon": 92.6837},
+    },
+    "Chhattisgarh": {
+        "Raipur":   {"lat": 21.2514, "lon": 81.6296},
+        "Bilaspur": {"lat": 22.0796, "lon": 82.1391},
+        "Durg":     {"lat": 21.1898, "lon": 81.2849},
+        "Bastar":   {"lat": 19.0748, "lon": 82.0144},
+    },
+    "Himachal Pradesh": {
+        "Shimla": {"lat": 31.1048, "lon": 77.1734},
+        "Kullu":  {"lat": 31.9580, "lon": 77.1095},
+        "Kangra": {"lat": 32.0998, "lon": 76.2691},
+    },
+    "Uttarakhand": {
+        "Dehradun":     {"lat": 30.3165, "lon": 78.0322},
+        "Haridwar":     {"lat": 29.9457, "lon": 78.1642},
+        "Rudraprayag":  {"lat": 30.2849, "lon": 78.9810},
+        "Nainital":     {"lat": 29.3919, "lon": 79.4542},
+    },
+    "Kerala": {
+        "Ernakulam":          {"lat":  9.9816, "lon": 76.2999},
+        "Thiruvananthapuram": {"lat":  8.5241, "lon": 76.9366},
+        "Kozhikode":          {"lat": 11.2588, "lon": 75.7804},
+        "Thrissur":           {"lat": 10.5276, "lon": 76.2144},
+    },
+    "Goa": {
+        "North Goa": {"lat": 15.4909, "lon": 73.8278},
+        "South Goa": {"lat": 15.2993, "lon": 74.1240},
+    },
+    "Jammu & Kashmir": {
+        "Jammu":     {"lat": 32.7266, "lon": 74.8570},
+        "Srinagar":  {"lat": 34.0837, "lon": 74.7973},
+        "Anantnag":  {"lat": 33.7311, "lon": 75.1487},
+        "Baramulla": {"lat": 34.2014, "lon": 74.3436},
+    },
+    "Tripura": {
+        "West Tripura": {"lat": 23.8315, "lon": 91.2868},
+        "Gomati":       {"lat": 23.5380, "lon": 91.4843},
+    },
+    "Meghalaya": {
+        "East Khasi Hills": {"lat": 25.5788, "lon": 91.8933},
+        "Ri Bhoi":          {"lat": 25.9067, "lon": 91.8754},
+    },
+}
+
+# Block-level real coordinates (from earlier OSM/Nominatim geocoding).
+# Use these for precise positioning within Samastipur district.
+BLOCK_COORDINATES: Dict[str, Dict[str, Dict[str, Dict[str, float]]]] = {
+    "Bihar": {
+        "Samastipur": {
+            "Kalyanpur":        {"lat": 25.9797, "lon": 85.7964},
+            "Rosera":           {"lat": 25.7798, "lon": 86.0425},
+            "Patori":           {"lat": 25.9300, "lon": 85.8600},
+            "Dalsinghsarai":    {"lat": 25.6727, "lon": 85.8124},
+            "Warisnagar":       {"lat": 25.9178, "lon": 85.8668},
+            "Singhia":          {"lat": 25.8276, "lon": 86.1757},
+        },
+    },
+}
+
+
+def resolve_coords(state: str, district: str, block: str, rng: np.random.Generator) -> tuple:
+    """
+    Place a tender at the most precise known coordinate:
+      1. Block centre (≈ ±0.5 km noise)        — true street-level fidelity
+      2. District centre (≈ ±5 km noise)       — within district boundary
+      3. State centre (≈ ±20 km noise)         — fallback only
+
+    The earlier bug used STATE centre + ±165 km noise, which scattered
+    same-district tenders across the entire state.
+    """
+    # 1. Block-level real coordinate
+    if (state in BLOCK_COORDINATES
+            and district in BLOCK_COORDINATES[state]
+            and block in BLOCK_COORDINATES[state][district]):
+        c = BLOCK_COORDINATES[state][district][block]
+        return (c["lat"] + rng.uniform(-0.005, 0.005),
+                c["lon"] + rng.uniform(-0.005, 0.005))
+
+    # 2. District-level fallback (small noise so points stay within district)
+    if state in DISTRICT_COORDINATES and district in DISTRICT_COORDINATES[state]:
+        c = DISTRICT_COORDINATES[state][district]
+        return (c["lat"] + rng.uniform(-0.05, 0.05),
+                c["lon"] + rng.uniform(-0.05, 0.05))
+
+    # 3. State centre fallback (still tighter than original 1.5° noise)
+    c = STATE_CENTERS[state]
+    return (c["lat"] + rng.uniform(-0.25, 0.25),
+            c["lon"] + rng.uniform(-0.25, 0.25))
+
+
+# ---------------------------------------------------------------------------
 # TITLE_TEMPLATES
 # ---------------------------------------------------------------------------
 
@@ -604,13 +813,13 @@ def generate_enterprise_seed_data(n: int = 10_000) -> pd.DataFrame:
     allocated_amounts = np.clip(log_amounts, 0.01, 5000.0)
     allocated_amounts = np.round(allocated_amounts, 2)
 
-    # ---- Geolocation — state centre + noise ------------------------------
+    # ---- Geolocation — block-level real coords (district fallback) -------
     lats = np.empty(n, dtype=np.float64)
     lons = np.empty(n, dtype=np.float64)
     for i in range(n):
-        center = STATE_CENTERS[states[i]]
-        lats[i] = center["lat"] + rng.uniform(-1.5, 1.5)
-        lons[i] = center["lon"] + rng.uniform(-1.5, 1.5)
+        lat_i, lon_i = resolve_coords(states[i], districts[i], blocks[i], rng)
+        lats[i] = lat_i
+        lons[i] = lon_i
     lats = np.round(lats, 6)
     lons = np.round(lons, 6)
 
@@ -879,9 +1088,12 @@ def get_view_config(
 
     Returns dict with keys: lat, lon, zoom.
     """
-    # Block / district level — use centroid of filtered data
+    # Block / district level — prefer canonical district coord for stable centre
     if district is not None and state is not None:
-        if len(df_filtered) > 0:
+        if state in DISTRICT_COORDINATES and district in DISTRICT_COORDINATES[state]:
+            c = DISTRICT_COORDINATES[state][district]
+            lat, lon = c["lat"], c["lon"]
+        elif len(df_filtered) > 0:
             lat = float(df_filtered["latitude"].mean())
             lon = float(df_filtered["longitude"].mean())
         elif state in STATE_CENTERS:
@@ -889,7 +1101,8 @@ def get_view_config(
             lon = STATE_CENTERS[state]["lon"]
         else:
             lat, lon = 22.5, 82.5
-        return {"lat": round(lat, 4), "lon": round(lon, 4), "zoom": 10}
+        # Tighter zoom so the district fills the viewport
+        return {"lat": round(lat, 4), "lon": round(lon, 4), "zoom": 11}
 
     # State level — use STATE_CENTERS lookup
     if state is not None:
