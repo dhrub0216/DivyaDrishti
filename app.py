@@ -350,6 +350,23 @@ c6.metric("🏢 Departments", f"{dept_count}")
 st.markdown("---")
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GEOCODING COVERAGE BANNER — show how many records have real entity coords
+# ─────────────────────────────────────────────────────────────────────────────
+# A record has "real coords" if its title contains a known facility / linear pattern
+# Heuristic proxy: records with latitude2 (linear) OR district != Unknown have been resolved.
+if drill_level in ("state", "district", "block") and len(df) > 0:
+    coverage_known_district = (df["district"].astype(str) != "Unknown").sum()
+    coverage_pct = coverage_known_district / len(df) * 100
+    if coverage_pct < 100:
+        st.warning(
+            f"🌐 **Geocoding coverage:** {coverage_known_district:,} / {len(df):,} tenders "
+            f"({coverage_pct:.0f}%) have district-level placement. "
+            f"For real hospital/school/road coordinates from OSM, click "
+            f"**'🌐 Run Entity Geocoding'** in the sidebar.",
+            icon="ℹ️",
+        )
+
+# ─────────────────────────────────────────────────────────────────────────────
 # MAP — Dual-mode adaptive rendering
 # ─────────────────────────────────────────────────────────────────────────────
 map_col, info_col = st.columns([4, 1])
@@ -408,8 +425,12 @@ with map_col:
         df_plot = df.copy()
         a_min = float(df_plot["allocated_amount"].min())
         a_max = float(df_plot["allocated_amount"].max())
+        # Diameter (pixels): 14 (min) → 38 (max). Was 10–50 with area-mode
+        # which collapsed to 3–8 px diameter — invisible when many points clustered.
+        size_min, size_max = 14, 38
         df_plot["bubble"] = (
-            ((df_plot["allocated_amount"] - a_min) / max(a_max - a_min, 1)) * 40 + 10
+            ((df_plot["allocated_amount"] - a_min) / max(a_max - a_min, 1))
+            * (size_max - size_min) + size_min
         )
         df_plot["amt_fmt"] = df_plot["allocated_amount"].apply(lambda x: f"₹{x:,.2f} Cr")
 
@@ -464,7 +485,8 @@ with map_col:
             zoom=view["zoom"],
             height=540,
         )
-        fig.update_traces(marker=dict(opacity=0.82, sizemode="area"))
+        # sizemode default ("diameter") — bubble value IS diameter in px
+        fig.update_traces(marker=dict(opacity=0.85))
 
         # ── Linear features (roads / bridges / pipelines) — drawn as lines ──
         if not df_lines.empty:

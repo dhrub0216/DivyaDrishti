@@ -978,6 +978,68 @@ def apply_memory_optimization(df: pd.DataFrame) -> pd.DataFrame:
 # LOAD / CACHE
 # ---------------------------------------------------------------------------
 
+def _disambiguate_within_district(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Fill / spread coords for records that are NaN or stacked at the district centre.
+    Each tender gets a deterministic jitter (stable_hash of tender_id) so identical
+    inputs always yield the same placement — but neighbours within a district
+    fan out across a 2-7 km radius instead of collapsing to one pixel on the map.
+
+    Required when scraped records have district='Unknown' or coords were never
+    populated, OR when bulk geocoder returned the same district-centre for all
+    same-district rows.
+    """
+    if df.empty:
+        return df
+
+    # Convert categorical state/district to plain str for membership checks
+    states    = df["state"].astype(str)    if "state"    in df.columns else None
+    districts = df["district"].astype(str) if "district" in df.columns else None
+
+    fixed = 0
+    for idx in df.index:
+        state    = states[idx]    if states    is not None else None
+        district = districts[idx] if districts is not None else None
+        lat = df.at[idx, "latitude"]
+        lon = df.at[idx, "longitude"]
+
+        # Determine if this record needs jitter
+        needs_fix = False
+        if pd.isna(lat) or pd.isna(lon):
+            needs_fix = True
+        elif state in DISTRICT_COORDINATES and district in DISTRICT_COORDINATES.get(state, {}):
+            d_centre = DISTRICT_COORDINATES[state][district]
+            # Within ~100 m of district centre → almost certainly stacked → jitter
+            if abs(float(lat) - d_centre["lat"]) < 0.001 and abs(float(lon) - d_centre["lon"]) < 0.001:
+                needs_fix = True
+
+        if not needs_fix:
+            continue
+
+        # Resolve centre (district preferred, state fallback)
+        if state in DISTRICT_COORDINATES and district in DISTRICT_COORDINATES.get(state, {}):
+            centre = DISTRICT_COORDINATES[state][district]
+        elif state in STATE_CENTERS:
+            centre = STATE_CENTERS[state]
+        else:
+            centre = {"lat": 22.5, "lon": 82.5}
+
+        tid = str(df.at[idx, "tender_id"]) if "tender_id" in df.columns else f"row{idx}"
+        h = _stable_hash(tid)
+        angle = (h % 360) * math.pi / 180
+        radius_km = 2.0 + ((h >> 8) & 0xFF) / 255.0 * 5.0   # 2–7 km
+        lat_off = (radius_km / 111.0) * math.sin(angle)
+        lon_factor = max(0.5, math.cos(math.radians(centre["lat"])))
+        lon_off = (radius_km / (111.0 * lon_factor)) * math.cos(angle)
+        df.at[idx, "latitude"]  = round(centre["lat"] + lat_off, 6)
+        df.at[idx, "longitude"] = round(centre["lon"] + lon_off, 6)
+        fixed += 1
+
+    if fixed:
+        logger.info("Disambiguated %d stacked/NaN coords with deterministic jitter", fixed)
+    return df
+
+
 def _load_from_sqlite() -> Optional[pd.DataFrame]:
     """
     Load scraped real data from tenders.db (written by scraper_v3.py).
@@ -1029,6 +1091,9 @@ def _load_from_sqlite() -> Optional[pd.DataFrame]:
                         backfilled += 1
             if backfilled:
                 logger.info("Backfilled %d linear endpoints from titles", backfilled)
+
+        # Disambiguate stacked / missing coords with deterministic per-tender jitter
+        df = _disambiguate_within_district(df)
         return df
     except Exception as e:
         logger.warning("Could not load tenders.db: %s", e)
