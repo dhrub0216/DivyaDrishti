@@ -217,9 +217,23 @@ with st.sidebar:
         else:
             cmd = [sys.executable, str(Path(__file__).parent / "scraper_v3.py"),
                    "--enrich-entities", "--enrich-limit", str(_enrich_limit)]
-            with st.spinner(f"Geocoding ~{_enrich_limit} records (≈ {_enrich_limit} seconds)…"):
-                result = subprocess.run(cmd, capture_output=True, text=True,
-                                         timeout=max(60, _enrich_limit * 2))
+            # Nominatim runs ~1 req/sec; allow 3 sec/record + 2-min floor.
+            sub_timeout = min(5400, max(120, _enrich_limit * 3))
+            with st.spinner(
+                f"Geocoding ~{_enrich_limit} records (≈ {int(sub_timeout/60)} min). "
+                f"Cache makes repeats free."
+            ):
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True,
+                                             timeout=sub_timeout)
+                except subprocess.TimeoutExpired:
+                    st.warning(
+                        f"⏱️ UI timeout reached. Partial progress saved to "
+                        f"tenders.db. Reload to see results, or run in terminal "
+                        f"for larger batches."
+                    )
+                    st.cache_data.clear()
+                    st.stop()
             if result.returncode == 0:
                 st.success("✅ Entity geocoding complete")
                 st.cache_data.clear()
@@ -260,15 +274,38 @@ with st.sidebar:
     _deep_limit = st.number_input(
         "Detail pages to fetch", min_value=10, max_value=2000, value=100, step=20,
     )
+    st.caption(
+        f"⚠️ For large batches (>100), prefer terminal: "
+        f"`python3 scraper_v3.py --deep-scrape --deep-limit {_deep_limit}` — "
+        f"avoids browser UI timeout."
+    )
     if st.button("📄 Run Deep Scrape", use_container_width=True):
         if not (Path(__file__).parent / "tenders.db").exists():
             st.warning("No tenders.db found. Run the scraper first.")
         else:
             cmd = [sys.executable, str(Path(__file__).parent / "scraper_v3.py"),
                    "--deep-scrape", "--deep-limit", str(_deep_limit)]
-            with st.spinner(f"Visiting ~{_deep_limit} detail pages (≈ {int(_deep_limit*1.5/60)+1} min)…"):
-                result = subprocess.run(cmd, capture_output=True, text=True,
-                                         timeout=max(300, _deep_limit * 3))
+            # Detail pages can take 5–10 sec each (load + wait + parse).
+            # Allow 12 sec/record + 5-min floor; cap at 90 min absolute max.
+            sub_timeout = min(5400, max(300, _deep_limit * 12))
+            est_min = int(sub_timeout / 60)
+            with st.spinner(
+                f"Visiting ~{_deep_limit} detail pages — timeout {est_min} min. "
+                f"Progress saved every 20 records, so partial completion is OK."
+            ):
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True,
+                                             timeout=sub_timeout)
+                except subprocess.TimeoutExpired as e:
+                    st.warning(
+                        f"⏱️ Subprocess hit {est_min}-min UI timeout. "
+                        f"Partial progress saved to tenders.db (records are "
+                        f"committed every 20 pages). Reload to see the data, "
+                        f"or run in terminal for unbounded runtime."
+                    )
+                    st.cache_data.clear()
+                    st.stop()
+
             if result.returncode == 0:
                 st.success("✅ Deep scrape complete")
                 st.code(result.stdout[-1000:])
