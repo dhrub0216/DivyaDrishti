@@ -1,471 +1,509 @@
 """
-National Geo-Spatial Public Expenditure & Tender Tracker  v2.0
-Pan-India | Hierarchical Drill-Down: National → State → District → Block
+Pan-India Multi-Department Public Expenditure & Tender Analytics Engine  v3.0
+Hierarchical Drill-Down: Sector → Department → State → District → Block
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 from pipeline import (
-    load_production_pipeline_data,
-    get_hierarchy,
+    load_enterprise_tender_stream,
+    get_full_hierarchy,
+    server_side_aggregate,
     get_view_config,
+    SECTOR_DEPARTMENTS,
+    SECTOR_COLORS,
     STATE_CENTERS,
-    INDIA_CENTER,
-    INDIA_ZOOM,
 )
 
-# ─────────────────────────────────────────────
-# PAGE CONFIG
-# ─────────────────────────────────────────────
+# ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="India Tender Tracker",
+    page_title="India Tender Analytics",
     page_icon="🇮🇳",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# ─────────────────────────────────────────────
-# CONSTANTS
-# ─────────────────────────────────────────────
-CATEGORY_COLORS = {
-    "Road":     "#E74C3C",
-    "Bridge":   "#3498DB",
-    "Water":    "#27AE60",
-    "Building": "#F39C12",
-    "Other":    "#9B59B6",
-}
+# ─── Sentinel values ───────────────────────────────────────────────────────────
+ALL = "All"
 
-STATUS_COLORS = {
-    "Active":    "#27AE60",
-    "Awarded":   "#F39C12",
-    "Completed": "#3498DB",
-}
+# Threshold above which we switch to aggregated map (performance guard)
+SCATTER_LIMIT = 5_000
 
-ALL_STATES    = "All States"
-ALL_DISTRICTS = "All Districts"
-ALL_BLOCKS    = "All Blocks"
+STATUS_COLORS = {"Active": "#27AE60", "Awarded": "#F39C12", "Completed": "#3498DB"}
 
-# ─────────────────────────────────────────────
-# CSS
-# ─────────────────────────────────────────────
+# ─── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .hero-title  { font-size:1.9rem; font-weight:700; color:#0D1B2A; margin-bottom:2px; }
-    .hero-sub    { font-size:.95rem; color:#666; margin-top:0; }
-    .level-badge {
-        display:inline-block; padding:3px 10px; border-radius:12px;
-        font-size:.75rem; font-weight:600; margin-bottom:8px;
-        background:#EBF5FB; color:#1A5276;
+    .hero { font-size:1.85rem; font-weight:700; color:#0D1B2A; }
+    .sub  { font-size:.9rem; color:#666; margin-top:-6px; }
+    .badge {
+        display:inline-block; padding:3px 12px; border-radius:14px;
+        font-size:.75rem; font-weight:600;
+        background:#EAF2FF; color:#1A4E8A; margin-bottom:6px;
     }
-    div[data-testid="metric-container"] { border-left:4px solid #3498DB; border-radius:6px; }
+    .agg-warn {
+        padding:6px 12px; background:#FFF8E1; border-left:4px solid #F39C12;
+        border-radius:4px; font-size:.82rem; color:#7D5A00; margin-bottom:8px;
+    }
+    div[data-testid="metric-container"] {
+        border-left:4px solid #3498DB; border-radius:6px; padding:6px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-# DATA LOAD
-# ─────────────────────────────────────────────
-@st.cache_data(ttl=1800, show_spinner=False)
-def load_data() -> pd.DataFrame:
-    return load_production_pipeline_data()
+# ─── Load data (cached) ────────────────────────────────────────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_data() -> pd.DataFrame:
+    return load_enterprise_tender_stream()
 
-with st.spinner("Loading national tender database…"):
-    try:
-        df_master = load_data()
-    except FileNotFoundError as e:
-        st.error(f"**Data not found.** {e}")
-        st.stop()
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_hierarchy(_df: pd.DataFrame) -> dict:
+    return get_full_hierarchy(_df)
+
+with st.spinner("🔄 Loading enterprise tender database…"):
+    df_master = get_data()
 
 hierarchy = get_hierarchy(df_master)
+all_sectors = sorted(hierarchy.keys())
 
-# ─────────────────────────────────────────────
-# SIDEBAR — Cascading Filters
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# SIDEBAR — 5-level cascading filters
+# ─────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🇮🇳 India Tender Tracker")
+    st.markdown("## 🇮🇳 India Tender Analytics")
+    st.caption(f"**{len(df_master):,}** tenders · {df_master['state'].nunique()} states · 12 sectors")
     st.markdown("---")
 
-    # ── Level 1: State ──
-    st.markdown("#### 📍 Drill-Down Filters")
-    state_options = [ALL_STATES] + sorted(hierarchy.keys())
-    selected_state = st.selectbox("State / UT", state_options, index=0)
-
-    # ── Level 2: District (cascades from state) ──
-    if selected_state != ALL_STATES:
-        district_options = [ALL_DISTRICTS] + sorted(hierarchy[selected_state].keys())
-    else:
-        district_options = [ALL_DISTRICTS]
-    selected_district = st.selectbox("District", district_options, index=0)
-
-    # ── Level 3: Block (cascades from district) ──
-    if selected_state != ALL_STATES and selected_district != ALL_DISTRICTS:
-        block_options = [ALL_BLOCKS] + sorted(hierarchy[selected_state][selected_district])
-    else:
-        block_options = [ALL_BLOCKS]
-    selected_block = st.selectbox("Block / Taluka", block_options, index=0)
+    # ── Global keyword search ─────────────────────────────────────────────────
+    st.markdown("#### 🔍 Global Search")
+    search_query = st.text_input(
+        "", placeholder="Search by title, dept, tender ID…",
+        label_visibility="collapsed",
+    )
 
     st.markdown("---")
+    st.markdown("#### 📊 Drill-Down Filters")
 
-    # ── Category filter ──
-    all_cats = sorted(df_master["category"].unique().tolist())
-    selected_cats = st.multiselect("Category", all_cats, default=all_cats)
+    # ── Level 1: Sector ────────────────────────────────────────────────────────
+    selected_sector = st.selectbox("Sector", [ALL] + all_sectors)
 
-    # ── Status filter ──
+    # ── Level 2: Department (cascades from sector) ─────────────────────────────
+    if selected_sector != ALL:
+        dept_options = [ALL] + sorted(hierarchy[selected_sector].keys())
+    else:
+        # Flatten all departments across all sectors
+        all_depts = sorted({d for s in hierarchy for d in hierarchy[s]})
+        dept_options = [ALL] + all_depts
+    selected_dept = st.selectbox("Department", dept_options)
+
+    # ── Level 3: State ─────────────────────────────────────────────────────────
+    if selected_sector != ALL and selected_dept != ALL:
+        state_options = [ALL] + sorted(hierarchy[selected_sector][selected_dept].keys())
+    elif selected_sector != ALL:
+        state_options = [ALL] + sorted({
+            s for d in hierarchy[selected_sector].values() for s in d
+        })
+    else:
+        state_options = [ALL] + sorted(df_master["state"].unique())
+    selected_state = st.selectbox("State / UT", state_options)
+
+    # ── Level 4: District ──────────────────────────────────────────────────────
+    if selected_state != ALL:
+        if selected_sector != ALL and selected_dept != ALL:
+            raw_districts = hierarchy[selected_sector][selected_dept].get(selected_state, {})
+        elif selected_sector != ALL:
+            raw_districts = {
+                d: blocks
+                for dept_data in hierarchy[selected_sector].values()
+                for d, blocks in dept_data.get(selected_state, {}).items()
+            }
+        else:
+            raw_districts = {
+                d: [] for d in sorted(df_master[df_master["state"] == selected_state]["district"].unique())
+            }
+        district_options = [ALL] + sorted(raw_districts.keys())
+    else:
+        district_options = [ALL]
+    selected_district = st.selectbox("District", district_options)
+
+    # ── Level 5: Block ─────────────────────────────────────────────────────────
+    if selected_state != ALL and selected_district != ALL:
+        mask_blk = (df_master["state"] == selected_state) & (df_master["district"] == selected_district)
+        if selected_sector != ALL:
+            mask_blk &= df_master["sector"] == selected_sector
+        block_options = [ALL] + sorted(df_master[mask_blk]["block"].unique())
+    else:
+        block_options = [ALL]
+    selected_block = st.selectbox("Block / Taluka", block_options)
+
+    st.markdown("---")
+    st.markdown("#### ⚙️ Additional Filters")
+
+    # Status filter
     all_statuses = sorted(df_master["status"].unique().tolist())
     selected_statuses = st.multiselect("Status", all_statuses, default=all_statuses)
 
-    # ── Budget slider ──
+    # Budget range slider
     amt_min = float(df_master["allocated_amount"].min())
     amt_max = float(df_master["allocated_amount"].max())
     budget_range = st.slider(
         "Budget Range (₹ Crores)",
         min_value=amt_min, max_value=amt_max,
-        value=(amt_min, amt_max), step=1.0,
-        format="₹%.0f Cr",
+        value=(amt_min, min(amt_max, 500.0)),
+        step=1.0, format="₹%.0f Cr",
     )
 
     st.markdown("---")
-    if st.button("🔄 Refresh Data Cache", use_container_width=True):
+    if st.button("🔄 Refresh Cache", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
+    st.caption("Source: GEM + CPPP + State Portals (Seed)")
 
-    st.caption(f"Total records in DB: **{len(df_master):,}**")
-    st.caption("Source: CPPP + State Portals + Seed Dataset")
 
-# ─────────────────────────────────────────────
-# DETERMINE DRILL-DOWN LEVEL
-# ─────────────────────────────────────────────
-if selected_state == ALL_STATES:
+# ─────────────────────────────────────────────────────────────────────────────
+# APPLY FILTERS
+# ─────────────────────────────────────────────────────────────────────────────
+df = df_master.copy()
+
+# Cascading filters
+if selected_sector != ALL:
+    df = df[df["sector"] == selected_sector]
+if selected_dept != ALL:
+    df = df[df["department"] == selected_dept]
+if selected_state != ALL:
+    df = df[df["state"] == selected_state]
+if selected_district != ALL:
+    df = df[df["district"] == selected_district]
+if selected_block != ALL:
+    df = df[df["block"] == selected_block]
+
+# Additional filters
+df = df[
+    df["status"].isin(selected_statuses) &
+    df["allocated_amount"].between(budget_range[0], budget_range[1])
+]
+
+# Global keyword search (applied last)
+if search_query.strip():
+    q = search_query.strip().lower()
+    mask = (
+        df["title"].str.lower().str.contains(q, na=False) |
+        df["department"].str.lower().str.contains(q, na=False) |
+        df["tender_id"].str.lower().str.contains(q, na=False)
+    )
+    df = df[mask]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DRILL LEVEL DETECTION
+# ─────────────────────────────────────────────────────────────────────────────
+if selected_state == ALL:
     drill_level = "national"
-    level_label = "🌏 National View — All States"
-elif selected_district == ALL_DISTRICTS:
+    level_label = "🌏 National View — All States & Sectors"
+elif selected_district == ALL:
     drill_level = "state"
     level_label = f"📍 State View — {selected_state}"
-elif selected_block == ALL_BLOCKS:
+elif selected_block == ALL:
     drill_level = "district"
     level_label = f"🏙️ District View — {selected_district}, {selected_state}"
 else:
     drill_level = "block"
     level_label = f"🔍 Block View — {selected_block}, {selected_district}"
 
-# ─────────────────────────────────────────────
-# FILTER DATA
-# ─────────────────────────────────────────────
-df = df_master.copy()
+render_mode = "scatter" if len(df) <= SCATTER_LIMIT else "aggregated"
 
-if selected_state != ALL_STATES:
-    df = df[df["state"] == selected_state]
-if selected_district != ALL_DISTRICTS:
-    df = df[df["district"] == selected_district]
-if selected_block != ALL_BLOCKS:
-    df = df[df["block"] == selected_block]
-
-df = df[
-    df["category"].isin(selected_cats) &
-    df["status"].isin(selected_statuses) &
-    df["allocated_amount"].between(budget_range[0], budget_range[1])
-]
-
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 # PAGE HEADER
-# ─────────────────────────────────────────────
-st.markdown('<p class="hero-title">🗺️ National Public Expenditure & Tender Tracker</p>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Real-time transparency dashboard for government infrastructure spending across India</p>', unsafe_allow_html=True)
-st.markdown(f'<span class="level-badge">{level_label}</span>', unsafe_allow_html=True)
+# ─────────────────────────────────────────────────────────────────────────────
+st.markdown('<p class="hero">🗺️ Pan-India Public Expenditure & Tender Analytics Engine</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub">Multi-department transparency dashboard — 12 sectors · 25 states/UTs · All administrative tiers</p>', unsafe_allow_html=True)
+st.markdown(f'<span class="badge">{level_label}</span>', unsafe_allow_html=True)
 st.markdown("---")
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 # EMPTY STATE GUARD
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 if df.empty:
-    st.warning("⚠️ No tenders match the current filters. Please adjust your selections.")
+    st.warning("⚠️ No tenders match the current filter combination. Please broaden your selection.")
     st.stop()
 
-# ─────────────────────────────────────────────
-# KPI CARDS  (dynamically recalculate at every level)
-# ─────────────────────────────────────────────
-total_funds  = df["allocated_amount"].sum()
-active_count = df[df["status"] == "Active"].shape[0]
-avg_cost     = df["allocated_amount"].mean()
-top_row      = df.loc[df["allocated_amount"].idxmax()]
-state_count  = df["state"].nunique()
+# ─────────────────────────────────────────────────────────────────────────────
+# KPI CARDS — dynamically recalculate at every level
+# ─────────────────────────────────────────────────────────────────────────────
+total_funds   = float(df["allocated_amount"].sum())
+active_count  = int((df["status"] == "Active").sum())
+avg_cost      = float(df["allocated_amount"].mean())
+top_row       = df.loc[df["allocated_amount"].idxmax()]
+sector_count  = df["sector"].nunique()
+dept_count    = df["department"].nunique()
 
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("💰 Total Funds", f"₹{total_funds:,.2f} Cr")
-c2.metric("📋 Active Projects", f"{active_count:,}")
-c3.metric("📊 Avg per Project", f"₹{avg_cost:,.2f} Cr")
-c4.metric("🏆 Largest Tender", f"₹{top_row['allocated_amount']:,.2f} Cr",
-          delta=top_row["title"][:30] + "…", delta_color="off")
-c5.metric("🗺️ States Covered", f"{state_count}")
+c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1.metric("💰 Total Budget", f"₹{total_funds:,.1f} Cr")
+c2.metric("📋 Active Tenders", f"{active_count:,}")
+c3.metric("📊 Avg per Tender", f"₹{avg_cost:,.2f} Cr")
+c4.metric("🏆 Largest Tender", f"₹{float(top_row['allocated_amount']):,.1f} Cr",
+          delta=str(top_row["sector"]), delta_color="off")
+c5.metric("🏭 Sectors Active", f"{sector_count}")
+c6.metric("🏢 Departments", f"{dept_count}")
 st.markdown("---")
 
-# ─────────────────────────────────────────────
-# MAP VISUALIZATION — Adaptive by drill level
-# ─────────────────────────────────────────────
-view = get_view_config(df, selected_state, selected_district)
-
+# ─────────────────────────────────────────────────────────────────────────────
+# MAP — Dual-mode adaptive rendering
+# ─────────────────────────────────────────────────────────────────────────────
 map_col, info_col = st.columns([4, 1])
+
+view = get_view_config(df, selected_state if selected_state != ALL else None,
+                       selected_district if selected_district != ALL else None)
 
 with map_col:
 
-    # ── NATIONAL VIEW: aggregate by state, bubble per state ──────────────
-    if drill_level == "national":
-        state_agg = (
-            df.groupby("state")
-            .agg(
-                total_amount=("allocated_amount", "sum"),
-                count=("tender_id", "count"),
-                lat=("latitude", "mean"),
-                lon=("longitude", "mean"),
-            )
-            .reset_index()
-        )
-        # Use state centres when available (more accurate than data mean)
-        state_agg["lat"] = state_agg["state"].map(
-            lambda s: STATE_CENTERS.get(s, {}).get("lat", state_agg.loc[state_agg["state"] == s, "lat"].values[0])
-        )
-        state_agg["lon"] = state_agg["state"].map(
-            lambda s: STATE_CENTERS.get(s, {}).get("lon", state_agg.loc[state_agg["state"] == s, "lon"].values[0])
-        )
-        state_agg["label"] = state_agg.apply(
-            lambda r: f"{r['state']}<br>₹{r['total_amount']:,.1f} Cr | {r['count']} tenders", axis=1
+    if render_mode == "aggregated":
+        # ── AGGREGATED MODE: >5000 points → group to prevent lag ─────────────
+        st.markdown(
+            '<div class="agg-warn">⚡ Aggregated view active — too many points for scatter. '
+            'Narrow filters to switch to deep-dive scatter mode.</div>',
+            unsafe_allow_html=True,
         )
 
+        # Group at the most meaningful level for current drill depth
+        if drill_level in ("national", "state"):
+            agg_col = "state"
+            hover_name = "state"
+        else:
+            agg_col = "district"
+            hover_name = "district"
+
+        agg_df = server_side_aggregate(df, agg_col)
+
+        # Attach state-center coordinates for national view
+        if agg_col == "state":
+            agg_df["lat"] = agg_df["state"].map(
+                lambda s: STATE_CENTERS.get(s, {}).get("lat", 22.5)
+            )
+            agg_df["lon"] = agg_df["state"].map(
+                lambda s: STATE_CENTERS.get(s, {}).get("lon", 82.5)
+            )
+
         fig = px.scatter_mapbox(
-            state_agg,
+            agg_df,
             lat="lat", lon="lon",
             size="total_amount",
             color="total_amount",
             color_continuous_scale="YlOrRd",
-            hover_name="state",
-            hover_data={"total_amount": ":.2f", "count": True, "lat": False, "lon": False},
-            labels={"total_amount": "₹ Crores", "count": "Tenders"},
-            mapbox_style="open-street-map",
-            center={"lat": INDIA_CENTER["lat"], "lon": INDIA_CENTER["lon"]},
-            zoom=INDIA_ZOOM,
-            height=560,
-            size_max=60,
-        )
-        fig.update_coloraxes(colorbar_title="₹ Crores")
-
-    # ── STATE VIEW: aggregate by district ────────────────────────────────
-    elif drill_level == "state":
-        dist_agg = (
-            df.groupby("district")
-            .agg(
-                total_amount=("allocated_amount", "sum"),
-                count=("tender_id", "count"),
-                lat=("latitude", "mean"),
-                lon=("longitude", "mean"),
-            )
-            .reset_index()
-        )
-        dist_agg["size_col"] = dist_agg["total_amount"].clip(lower=1)
-
-        fig = px.scatter_mapbox(
-            dist_agg,
-            lat="lat", lon="lon",
-            size="size_col",
-            color="total_amount",
-            color_continuous_scale="Blues",
-            hover_name="district",
-            hover_data={"total_amount": ":.2f", "count": True, "lat": False, "lon": False, "size_col": False},
+            hover_name=hover_name,
+            hover_data={"total_amount": ":.1f", "count": True, "lat": False, "lon": False},
             labels={"total_amount": "₹ Crores", "count": "Tenders"},
             mapbox_style="open-street-map",
             center={"lat": view["lat"], "lon": view["lon"]},
             zoom=view["zoom"],
-            height=560,
-            size_max=55,
+            size_max=60,
+            height=540,
         )
+        fig.update_coloraxes(colorbar_title="₹ Cr")
 
-    # ── DISTRICT / BLOCK VIEW: individual scatter points ─────────────────
     else:
-        # Scale bubble size min-max proportional to amount
-        a_min, a_max = df["allocated_amount"].min(), df["allocated_amount"].max()
-        df = df.copy()
-        df["bubble"] = (
-            ((df["allocated_amount"] - a_min) / (a_max - a_min + 1e-9)) * 40 + 10
+        # ── SCATTER MODE: ≤5000 points → individual markers ──────────────────
+        df_plot = df.copy()
+        a_min = float(df_plot["allocated_amount"].min())
+        a_max = float(df_plot["allocated_amount"].max())
+        df_plot["bubble"] = (
+            ((df_plot["allocated_amount"] - a_min) / max(a_max - a_min, 1)) * 40 + 10
         )
-        df["amt_fmt"] = df["allocated_amount"].apply(lambda x: f"₹{x:,.2f} Crores")
+        df_plot["amt_fmt"] = df_plot["allocated_amount"].apply(lambda x: f"₹{x:,.2f} Cr")
 
         fig = px.scatter_mapbox(
-            df,
+            df_plot,
             lat="latitude", lon="longitude",
             size="bubble",
-            color="category",
-            color_discrete_map=CATEGORY_COLORS,
+            color="sector",
+            color_discrete_map=SECTOR_COLORS,
             hover_name="title",
             hover_data={
                 "department": True,
-                "amt_fmt": True,
-                "status": True,
-                "state": True,
-                "district": True,
-                "block": True,
-                "bubble": False,
-                "latitude": False,
-                "longitude": False,
+                "amt_fmt":    True,
+                "status":     True,
+                "state":      True,
+                "district":   True,
+                "block":      True,
+                "bubble":     False,
+                "latitude":   False,
+                "longitude":  False,
             },
-            labels={"amt_fmt": "Allocated", "department": "Dept", "status": "Status"},
+            labels={"amt_fmt": "Allocated", "department": "Dept", "status": "Status", "sector": "Sector"},
             mapbox_style="open-street-map",
             center={"lat": view["lat"], "lon": view["lon"]},
             zoom=view["zoom"],
-            height=560,
+            height=540,
         )
-        fig.update_traces(
-            marker=dict(opacity=0.85, sizemode="area"),
-        )
+        fig.update_traces(marker=dict(opacity=0.82, sizemode="area"))
 
     fig.update_layout(
         margin=dict(l=0, r=0, t=5, b=0),
-        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                    font=dict(size=11)),
     )
     st.plotly_chart(fig, use_container_width=True)
 
 with info_col:
-    st.markdown("#### 🔍 Current View")
-    st.markdown(f"**Level:** {drill_level.capitalize()}")
-    st.markdown(f"**Tenders shown:** `{len(df):,}`")
+    st.markdown("#### 📌 View Info")
+    st.markdown(f"**Mode:** `{render_mode}`")
+    st.markdown(f"**Records:** `{len(df):,}`")
+    st.markdown(f"**Scatter limit:** `{SCATTER_LIMIT:,}`")
     st.markdown("---")
 
-    if drill_level in ("district", "block"):
-        st.markdown("**By Category**")
-        for cat, color in CATEGORY_COLORS.items():
-            count = (df["category"] == cat).sum()
-            if count:
-                st.markdown(
-                    f'<span style="background:{color};border-radius:50%;display:inline-block;'
-                    f'width:10px;height:10px;margin-right:5px;"></span> {cat} ({count})',
-                    unsafe_allow_html=True,
-                )
+    if render_mode == "scatter":
+        st.markdown("**Sectors shown**")
+        for sec in sorted(df["sector"].unique()):
+            color = SECTOR_COLORS.get(sec, "#999")
+            cnt = int((df["sector"] == sec).sum())
+            st.markdown(
+                f'<span style="background:{color};border-radius:50%;display:inline-block;'
+                f'width:10px;height:10px;margin-right:5px;"></span>{sec[:14]} ({cnt})',
+                unsafe_allow_html=True,
+            )
     else:
-        # Show top states or districts in current view
-        group_col = "state" if drill_level == "national" else "district"
-        top5 = (
-            df.groupby(group_col)["allocated_amount"]
-            .sum().sort_values(ascending=False).head(5)
-        )
-        st.markdown(f"**Top {group_col.capitalize()}s**")
+        # Top spending areas
+        grp = "state" if drill_level in ("national","state") else "district"
+        top5 = df.groupby(grp)["allocated_amount"].sum().nlargest(5)
+        st.markdown(f"**Top {grp.capitalize()}s**")
         for name, amt in top5.items():
-            st.caption(f"{name[:20]}: ₹{amt:,.1f} Cr")
+            st.caption(f"{str(name)[:18]}: ₹{amt:,.0f} Cr")
 
     st.markdown("---")
     st.markdown("**Status**")
-    for status, color in STATUS_COLORS.items():
-        cnt = (df["status"] == status).sum()
-        st.markdown(
-            f'<span style="color:{color};font-weight:600;">●</span> {status}: {cnt}',
-            unsafe_allow_html=True,
-        )
+    for s, col in STATUS_COLORS.items():
+        cnt = int((df["status"] == s).sum())
+        if cnt:
+            st.markdown(
+                f'<span style="color:{col};font-weight:700;">●</span> {s}: {cnt:,}',
+                unsafe_allow_html=True,
+            )
 
-# ─────────────────────────────────────────────
-# ANALYTICS CHARTS
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# ANALYTICS GRID — 4 charts
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("---")
-ch1, ch2, ch3 = st.columns(3)
+ch1, ch2, ch3, ch4 = st.columns(4)
 
+# Chart 1: Funds by Sector
 with ch1:
-    st.subheader("💹 Funds by Category")
-    cat_df = (
-        df.groupby("category")["allocated_amount"]
-        .sum().reset_index()
-        .rename(columns={"allocated_amount": "₹ Crores"})
-        .sort_values("₹ Crores", ascending=False)
+    st.markdown("**💹 Budget by Sector**")
+    sec_df = (
+        df.groupby("sector")["allocated_amount"].sum()
+        .reset_index().rename(columns={"allocated_amount": "₹ Cr"})
+        .sort_values("₹ Cr", ascending=True)
     )
-    fig_bar = px.bar(
-        cat_df, x="category", y="₹ Crores",
-        color="category", color_discrete_map=CATEGORY_COLORS,
-        text_auto=".1f",
+    fig1 = px.bar(
+        sec_df, x="₹ Cr", y="sector", orientation="h",
+        color="sector", color_discrete_map=SECTOR_COLORS,
+        text_auto=".0f", height=320,
     )
-    fig_bar.update_layout(showlegend=False, margin=dict(t=10, b=10))
-    st.plotly_chart(fig_bar, use_container_width=True)
+    fig1.update_layout(showlegend=False, margin=dict(t=5,b=5,l=5,r=5),
+                       yaxis=dict(tickfont=dict(size=10)))
+    st.plotly_chart(fig1, use_container_width=True)
 
+# Chart 2: Status donut
 with ch2:
-    st.subheader("📊 Status Split")
+    st.markdown("**📊 Status Split**")
     stat_df = df["status"].value_counts().reset_index()
     stat_df.columns = ["Status", "Count"]
-    fig_pie = px.pie(
+    fig2 = px.pie(
         stat_df, names="Status", values="Count",
         color="Status", color_discrete_map=STATUS_COLORS,
-        hole=0.45,
+        hole=0.5, height=320,
     )
-    fig_pie.update_traces(textposition="outside", textinfo="percent+label")
-    fig_pie.update_layout(margin=dict(t=10, b=10), showlegend=False)
-    st.plotly_chart(fig_pie, use_container_width=True)
+    fig2.update_traces(textposition="outside", textinfo="percent+label")
+    fig2.update_layout(showlegend=False, margin=dict(t=5,b=5,l=5,r=5))
+    st.plotly_chart(fig2, use_container_width=True)
 
+# Chart 3: Top Departments by spend
 with ch3:
-    # Varies by drill level — top aggregation
-    if drill_level == "national":
-        group_label = "State"
-        top_df = (
-            df.groupby("state")["allocated_amount"]
-            .sum().nlargest(8).reset_index()
-            .rename(columns={"state": "State", "allocated_amount": "₹ Crores"})
-        )
-        st.subheader("🏅 Top States by Spend")
-        fig_top = px.bar(
-            top_df, x="₹ Crores", y="State",
-            orientation="h", text_auto=".0f",
-            color="₹ Crores", color_continuous_scale="YlOrRd",
-        )
-    elif drill_level == "state":
-        top_df = (
-            df.groupby("district")["allocated_amount"]
-            .sum().nlargest(8).reset_index()
-            .rename(columns={"district": "District", "allocated_amount": "₹ Crores"})
-        )
-        st.subheader(f"🏅 Top Districts — {selected_state}")
-        fig_top = px.bar(
-            top_df, x="₹ Crores", y="District",
-            orientation="h", text_auto=".0f",
-            color="₹ Crores", color_continuous_scale="Blues",
-        )
-    else:
-        top_df = (
-            df.nlargest(8, "allocated_amount")[["title", "allocated_amount"]]
-            .rename(columns={"title": "Project", "allocated_amount": "₹ Crores"})
-        )
-        top_df["Project"] = top_df["Project"].str[:30]
-        st.subheader("🏅 Top Tenders")
-        fig_top = px.bar(
-            top_df, x="₹ Crores", y="Project",
-            orientation="h", text_auto=".1f",
-            color="₹ Crores", color_continuous_scale="Greens",
-        )
-
-    fig_top.update_layout(
-        showlegend=False, coloraxis_showscale=False,
-        margin=dict(t=10, b=10), yaxis=dict(autorange="reversed"),
+    st.markdown("**🏢 Top Departments**")
+    dept_df = (
+        df.groupby("department")["allocated_amount"].sum()
+        .nlargest(8).reset_index()
+        .rename(columns={"allocated_amount": "₹ Cr", "department": "Dept"})
+        .sort_values("₹ Cr")
     )
-    st.plotly_chart(fig_top, use_container_width=True)
+    dept_df["Dept"] = dept_df["Dept"].str[:28]
+    fig3 = px.bar(
+        dept_df, x="₹ Cr", y="Dept", orientation="h",
+        text_auto=".0f", height=320,
+        color="₹ Cr", color_continuous_scale="Blues",
+    )
+    fig3.update_layout(showlegend=False, coloraxis_showscale=False,
+                       margin=dict(t=5,b=5,l=5,r=5),
+                       yaxis=dict(tickfont=dict(size=9)))
+    st.plotly_chart(fig3, use_container_width=True)
 
-# ─────────────────────────────────────────────
-# SEARCHABLE DATA TABLE
-# ─────────────────────────────────────────────
+# Chart 4: Amount distribution histogram
+with ch4:
+    st.markdown("**📈 Budget Distribution**")
+    fig4 = px.histogram(
+        df, x="allocated_amount", nbins=40,
+        color_discrete_sequence=["#3498DB"],
+        labels={"allocated_amount": "₹ Crores"},
+        height=320,
+    )
+    fig4.update_layout(margin=dict(t=5,b=5,l=5,r=5),
+                       yaxis_title="Tenders", bargap=0.05)
+    st.plotly_chart(fig4, use_container_width=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SEARCHABLE PAGINATED DATA TABLE
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("📄 Tender Details")
+st.subheader(f"📄 Tender Records — {len(df):,} results")
 
-show_cols = {
+TABLE_COLS = {
     "tender_id":        "Tender ID",
     "title":            "Project Title",
-    "category":         "Category",
-    "allocated_amount": "Amount (₹ Cr)",
+    "sector":           "Sector",
+    "department":       "Department",
+    "allocated_amount": "₹ Crores",
     "state":            "State",
     "district":         "District",
     "block":            "Block",
     "status":           "Status",
-    "department":       "Department",
 }
 
-df_table = df[list(show_cols.keys())].rename(columns=show_cols).copy()
-df_table["Amount (₹ Cr)"] = df_table["Amount (₹ Cr)"].apply(lambda x: f"₹{x:,.2f}")
+# Pagination
+PAGE_SIZE = 200
+total_pages = max(1, (len(df) - 1) // PAGE_SIZE + 1)
 
-st.dataframe(df_table, use_container_width=True, height=340, hide_index=True)
+pcol1, pcol2, pcol3 = st.columns([2, 1, 2])
+with pcol2:
+    page = st.number_input("Page", min_value=1, max_value=total_pages, value=1, step=1)
 
-csv = df[list(show_cols.keys())].rename(columns=show_cols).to_csv(index=False)
-st.download_button(
-    "⬇️ Download Filtered Data (CSV)",
-    data=csv,
-    file_name=f"india_tenders_{drill_level}.csv",
-    mime="text/csv",
+start = (page - 1) * PAGE_SIZE
+end   = start + PAGE_SIZE
+
+df_page = (
+    df.iloc[start:end][list(TABLE_COLS.keys())]
+    .rename(columns=TABLE_COLS)
+    .copy()
 )
+df_page["₹ Crores"] = df_page["₹ Crores"].apply(lambda x: f"₹{x:,.2f}")
+st.caption(f"Showing rows {start+1}–{min(end, len(df))} of {len(df):,}   |   Page {page} / {total_pages}")
+
+st.dataframe(df_page, use_container_width=True, height=380, hide_index=True)
+
+# Download full filtered set
+csv_data = (
+    df[list(TABLE_COLS.keys())]
+    .rename(columns=TABLE_COLS)
+    .to_csv(index=False)
+)
+dl1, dl2 = st.columns([1, 4])
+with dl1:
+    st.download_button(
+        "⬇️ Download CSV",
+        data=csv_data,
+        file_name=f"india_tenders_{drill_level}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+with dl2:
+    st.caption(f"Full filtered dataset: {len(df):,} rows · {len(TABLE_COLS)} columns")

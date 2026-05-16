@@ -3,3 +3,5 @@ __pycache__/
 geocache.json
 tenders.json
 .env
+data/generated_tenders.csv
+
