@@ -620,19 +620,57 @@ def generate_enterprise_seed_data(n: int = 10_000) -> pd.DataFrame:
     status_indices = rng.choice(3, size=n, p=status_probs)
     statuses: List[str] = [status_choices[int(i)] for i in status_indices]
 
+    # ---- Contractor + project lifecycle dates ---------------------------
+    CONTRACTORS = [
+        "L&T Construction", "Tata Projects Ltd", "Shapoorji Pallonji",
+        "Hindustan Construction Co (HCC)", "Gammon India", "IRCON International",
+        "Afcons Infrastructure", "NBCC India", "KEC International",
+        "Punj Lloyd", "Dilip Buildcon", "GR Infraprojects", "PNC Infratech",
+        "Megha Engineering", "Sadbhav Engineering", "Ashoka Buildcon",
+        "ITD Cementation", "Reliance Infra", "J Kumar Infraprojects",
+        "Local Contractor (TBD)",
+    ]
+    # Awarded/Completed: contractor known; Active: TBD
+    contractors = np.where(
+        np.array(statuses) == "Active",
+        "",
+        rng.choice(CONTRACTORS, size=n),
+    )
+
+    # start_date: random day in [-540, +60] days from today
+    # end_date:   start + 12..36 months
+    today = pd.Timestamp.today().normalize()
+    start_offsets = rng.integers(-540, 60, size=n)
+    duration_days = rng.integers(365, 365 * 3, size=n)
+    start_dates = [(today + pd.Timedelta(days=int(o))).date().isoformat() for o in start_offsets]
+    end_dates   = [(today + pd.Timedelta(days=int(o + d))).date().isoformat()
+                   for o, d in zip(start_offsets, duration_days)]
+
+    # Completed status → end_date already in past; Active → start_date in future
+    for i, s in enumerate(statuses):
+        if s == "Completed":
+            # nudge end_date into past
+            past = today - pd.Timedelta(days=int(rng.integers(30, 365)))
+            end_dates[i] = past.date().isoformat()
+
     # ---- Assemble DataFrame ----------------------------------------------
     df = pd.DataFrame({
         "tender_id":        tender_ids,
-        "title":            titles,
-        "sector":           sectors,
-        "department":       departments,
-        "state":            states,
-        "district":         districts,
-        "block":            blocks,
-        "allocated_amount": allocated_amounts,
-        "latitude":         lats,
-        "longitude":        lons,
-        "status":           statuses,
+        "title":             titles,
+        "sector":            sectors,
+        "department":        departments,
+        "state":             states,
+        "district":          districts,
+        "block":             blocks,
+        "allocated_amount":  allocated_amounts,
+        "latitude":          lats,
+        "longitude":         lons,
+        "status":            statuses,
+        "contractor_name":   contractors,
+        "start_date":        start_dates,
+        "end_date":          end_dates,
+        "source":            "Seed Data",
+        "source_url":        "",
     })
 
     logger.info("Generated DataFrame with shape %s", df.shape)
@@ -688,7 +726,8 @@ def _load_from_sqlite() -> Optional[pd.DataFrame]:
             return None
         df = pd.read_sql(
             "SELECT tender_id, title, sector, department, state, district, block, "
-            "       allocated_amount, latitude, longitude, status, source "
+            "       allocated_amount, latitude, longitude, status, source, source_url, "
+            "       contractor_name, start_date, end_date "
             "FROM tenders",
             conn,
         )
@@ -697,6 +736,35 @@ def _load_from_sqlite() -> Optional[pd.DataFrame]:
         return df
     except Exception as e:
         logger.warning("Could not load tenders.db: %s", e)
+        return None
+
+
+def load_health_log() -> Optional[pd.DataFrame]:
+    """
+    Read scraping_health_log table from tenders.db.
+    Returns most-recent attempt per source (deduplicated, latest first).
+    """
+    import sqlite3
+    db_path = BASE_DIR / "tenders.db"
+    if not db_path.exists():
+        return None
+    try:
+        conn = sqlite3.connect(db_path)
+        df = pd.read_sql(
+            """SELECT source, domain, status, error_code, error_msg,
+                      records_fetched, logged_at
+               FROM scraping_health_log
+               ORDER BY logged_at DESC""",
+            conn,
+        )
+        conn.close()
+        if df.empty:
+            return df
+        # Keep only the most recent attempt per (source, domain)
+        df = df.drop_duplicates(subset=["source", "domain"], keep="first")
+        return df.reset_index(drop=True)
+    except Exception as e:
+        logger.warning("Could not load health log: %s", e)
         return None
 
 

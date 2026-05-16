@@ -88,20 +88,70 @@ CREATE TABLE IF NOT EXISTS tenders (
     longitude        REAL,
     status           TEXT DEFAULT 'Active',
     source           TEXT,
+    source_url       TEXT,
+    contractor_name  TEXT,
+    start_date       TEXT,
+    end_date         TEXT,
     scraped_at       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_state  ON tenders(state);
 CREATE INDEX IF NOT EXISTS idx_sector ON tenders(sector);
 CREATE INDEX IF NOT EXISTS idx_dept   ON tenders(department);
 CREATE INDEX IF NOT EXISTS idx_status ON tenders(status);
+
+CREATE TABLE IF NOT EXISTS scraping_health_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    source          TEXT,
+    domain          TEXT,
+    status          TEXT,
+    error_code      TEXT,
+    error_msg       TEXT,
+    records_fetched INTEGER DEFAULT 0,
+    logged_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_health_source ON scraping_health_log(source);
 """
+
+_MIGRATION_COLUMNS = [
+    ("contractor_name", "TEXT"),
+    ("start_date",      "TEXT"),
+    ("end_date",        "TEXT"),
+    ("source_url",      "TEXT"),
+]
 
 
 def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
+    # Idempotent migration for existing DBs created before v4.0
+    for col, sql_type in _MIGRATION_COLUMNS:
+        try:
+            conn.execute(f"ALTER TABLE tenders ADD COLUMN {col} {sql_type}")
+        except sqlite3.OperationalError:
+            pass
+    conn.commit()
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def log_health(
+    conn: sqlite3.Connection,
+    source: str,
+    domain: str,
+    status: str,
+    error_code: str = "",
+    error_msg: str = "",
+    records_fetched: int = 0,
+):
+    """Record one scraping attempt to scraping_health_log."""
+    conn.execute(
+        """INSERT INTO scraping_health_log
+           (source, domain, status, error_code, error_msg, records_fetched, logged_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (source, domain, status, error_code, error_msg[:500], records_fetched,
+         datetime.now().isoformat(timespec="seconds")),
+    )
+    conn.commit()
 
 
 def upsert(conn: sqlite3.Connection, records: list[dict]) -> int:
@@ -111,10 +161,12 @@ def upsert(conn: sqlite3.Connection, records: list[dict]) -> int:
     conn.executemany(
         """INSERT OR REPLACE INTO tenders
            (tender_id, title, sector, department, state, district, block,
-            allocated_amount, latitude, longitude, status, source, scraped_at)
+            allocated_amount, latitude, longitude, status, source, source_url,
+            contractor_name, start_date, end_date, scraped_at)
            VALUES
            (:tender_id, :title, :sector, :department, :state, :district, :block,
-            :allocated_amount, :latitude, :longitude, :status, :source, :scraped_at)
+            :allocated_amount, :latitude, :longitude, :status, :source, :source_url,
+            :contractor_name, :start_date, :end_date, :scraped_at)
         """,
         records,
     )
@@ -174,6 +226,25 @@ def extract_state_from_org(org: str) -> str:
     return "Unknown"
 
 
+_DATE_RE = re.compile(r"\b(\d{1,2})[\-/](\d{1,2})[\-/](\d{2,4})\b")
+
+
+def extract_date(text: str) -> Optional[str]:
+    """Pull first DD/MM/YYYY or DD-MM-YYYY date → ISO 'YYYY-MM-DD'. None if absent."""
+    if not text:
+        return None
+    m = _DATE_RE.search(text)
+    if not m:
+        return None
+    d, mo, y = m.groups()
+    if len(y) == 2:
+        y = "20" + y
+    try:
+        return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+    except ValueError:
+        return None
+
+
 def make_record(
     tender_id: str,
     title: str,
@@ -181,6 +252,10 @@ def make_record(
     amount_str: str,
     state: str,
     source: str,
+    source_url: str = "",
+    contractor_name: str = "",
+    start_date: str = "",
+    end_date: str = "",
     status: str = "Active",
 ) -> dict:
     return {
@@ -196,13 +271,17 @@ def make_record(
         "longitude":        None,
         "status":           status,
         "source":           source,
+        "source_url":       source_url,
+        "contractor_name":  contractor_name.strip() or None,
+        "start_date":       start_date or None,
+        "end_date":         end_date or None,
         "scraped_at":       datetime.now().isoformat(timespec="seconds"),
     }
 
 
 # ─── Playwright: NIC Portal Scraper ───────────────────────────────────────────
 
-def scrape_nic_portal(state_label: str, base_url: str, max_pages: int, headless: bool) -> list[dict]:
+def scrape_nic_portal(state_label: str, base_url: str, max_pages: int, headless: bool, conn: sqlite3.Connection = None) -> list[dict]:
     """
     Scrape a NIC eProcurement portal (CPPP or state variant).
     NIC portals all share the same HTML structure:
@@ -265,13 +344,22 @@ def scrape_nic_portal(state_label: str, base_url: str, max_pages: int, headless:
 
                     st = extract_state_from_org(org) if state_label == "Central (CPPP)" else state_label
 
+                    # Try to pull dates from the row (Published/Closing date cells)
+                    date_cells = [t for t in texts if _DATE_RE.search(t)]
+                    start_iso  = extract_date(date_cells[0]) if date_cells else ""
+                    end_iso    = extract_date(date_cells[-1]) if len(date_cells) > 1 else ""
+
                     records.append(make_record(
-                        tender_id  = ref[:120],
-                        title      = title_text[:300],
-                        department = org[:200],
-                        amount_str = amount_raw,
-                        state      = st,
-                        source     = f"NIC/{state_label}",
+                        tender_id       = ref[:120],
+                        title           = title_text[:300],
+                        department      = org[:200],
+                        amount_str      = amount_raw,
+                        state           = st,
+                        source          = f"NIC/{state_label}",
+                        source_url      = page.url,
+                        contractor_name = "",   # not present in active listings
+                        start_date      = start_iso,
+                        end_date        = end_iso,
                     ))
                     page_count += 1
 
@@ -291,10 +379,21 @@ def scrape_nic_portal(state_label: str, base_url: str, max_pages: int, headless:
                     logger.warning("[NIC] %s — Next click timeout at page %d", state_label, pg_num)
                     break
 
-        except PWTimeout:
+            # Health log: success
+            if conn is not None:
+                log_health(conn, f"NIC/{state_label}", base_url, "success",
+                           records_fetched=len(records))
+
+        except PWTimeout as e:
             logger.warning("[NIC] %s — navigation timeout (portal may be down)", state_label)
+            if conn is not None:
+                log_health(conn, f"NIC/{state_label}", base_url, "failed",
+                           error_code="TIMEOUT", error_msg=str(e))
         except Exception as e:
             logger.warning("[NIC] %s — error: %s", state_label, e)
+            if conn is not None:
+                log_health(conn, f"NIC/{state_label}", base_url, "failed",
+                           error_code=type(e).__name__, error_msg=str(e))
         finally:
             browser.close()
 
@@ -304,7 +403,7 @@ def scrape_nic_portal(state_label: str, base_url: str, max_pages: int, headless:
 
 # ─── Playwright: GeM Bidplus Scraper ──────────────────────────────────────────
 
-def scrape_gem(max_pages: int, headless: bool) -> list[dict]:
+def scrape_gem(max_pages: int, headless: bool, conn: sqlite3.Connection = None) -> list[dict]:
     """
     Scrape Government e-Marketplace bid listings.
     URL: https://bidplus.gem.gov.in/all-bids
@@ -393,10 +492,20 @@ def scrape_gem(max_pages: int, headless: bool) -> list[dict]:
                 except PWTimeout:
                     break
 
-        except PWTimeout:
+            if conn is not None:
+                log_health(conn, "GEM Bidplus", GEM_URL, "success",
+                           records_fetched=len(records))
+
+        except PWTimeout as e:
             logger.warning("[GEM] Navigation timeout")
+            if conn is not None:
+                log_health(conn, "GEM Bidplus", GEM_URL, "failed",
+                           error_code="TIMEOUT", error_msg=str(e))
         except Exception as e:
             logger.warning("[GEM] Error: %s", e)
+            if conn is not None:
+                log_health(conn, "GEM Bidplus", GEM_URL, "failed",
+                           error_code=type(e).__name__, error_msg=str(e))
         finally:
             browser.close()
 
@@ -581,7 +690,7 @@ def run_pipeline(
 
     # 1. CPPP (Central NIC portal)
     if "cppp" in sources:
-        recs = scrape_nic_portal("Central (CPPP)", NIC_PORTALS["Central (CPPP)"], max_pages, headless)
+        recs = scrape_nic_portal("Central (CPPP)", NIC_PORTALS["Central (CPPP)"], max_pages, headless, conn=conn)
         n = upsert(conn, recs)
         summary["CPPP"] = n
         logger.info("CPPP: %d records saved", n)
@@ -592,14 +701,14 @@ def run_pipeline(
         if states_filter:
             portals = {k: v for k, v in portals.items() if k in states_filter}
         for state_label, url in portals.items():
-            recs = scrape_nic_portal(state_label, url, max_pages, headless)
+            recs = scrape_nic_portal(state_label, url, max_pages, headless, conn=conn)
             n = upsert(conn, recs)
             summary[state_label] = n
             logger.info("%s: %d records saved", state_label, n)
 
     # 3. GeM Bidplus
     if "gem" in sources:
-        recs = scrape_gem(max_pages, headless)
+        recs = scrape_gem(max_pages, headless, conn=conn)
         n = upsert(conn, recs)
         summary["GeM"] = n
         logger.info("GeM: %d records saved", n)
@@ -608,11 +717,19 @@ def run_pipeline(
     if "datagov" in sources:
         if not api_key:
             logger.error("[OGD] --api-key required for data.gov.in source. Get free key: https://data.gov.in/user/register")
+            log_health(conn, "data.gov.in", DATAGOV_BASE, "failed",
+                       error_code="NO_API_KEY", error_msg="API key not supplied")
         else:
-            recs = scrape_datagov(api_key)
-            n = upsert(conn, recs)
-            summary["data.gov.in"] = n
-            logger.info("data.gov.in: %d records saved", n)
+            try:
+                recs = scrape_datagov(api_key)
+                n = upsert(conn, recs)
+                summary["data.gov.in"] = n
+                logger.info("data.gov.in: %d records saved", n)
+                log_health(conn, "data.gov.in", DATAGOV_BASE, "success", records_fetched=n)
+            except Exception as e:
+                log_health(conn, "data.gov.in", DATAGOV_BASE, "failed",
+                           error_code=type(e).__name__, error_msg=str(e))
+                logger.error("[OGD] Pipeline failed: %s", e)
 
     # 5. Geocode any missing coordinates
     geocode_missing_db(conn)

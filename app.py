@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 
 from pipeline import (
     load_enterprise_tender_stream,
+    load_health_log,
     get_full_hierarchy,
     server_side_aggregate,
     get_view_config,
@@ -198,6 +199,39 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
+    # ── System Health (failed_domains visibility) ─────────────────────────
+    st.markdown("---")
+    with st.expander("🩺 Data Source Health", expanded=False):
+        _health = load_health_log()
+        if _health is None or _health.empty:
+            st.caption("No scraping attempts logged yet. Run the scraper to populate.")
+        else:
+            _ok   = _health[_health["status"] == "success"]
+            _fail = _health[_health["status"] == "failed"]
+
+            hc1, hc2 = st.columns(2)
+            hc1.metric("✅ Reachable", len(_ok))
+            hc2.metric("❌ Blocked / Down", len(_fail))
+
+            if not _fail.empty:
+                st.markdown("**Failed domains** — could not scrape:")
+                for _, row in _fail.iterrows():
+                    st.markdown(
+                        f"<small>🔴 **{row['source']}** — `{row['error_code']}`<br>"
+                        f"<span style='color:#888'>{row['domain']}</span></small>",
+                        unsafe_allow_html=True,
+                    )
+
+            if not _ok.empty:
+                st.markdown("**Reachable** sources:")
+                for _, row in _ok.iterrows():
+                    st.markdown(
+                        f"<small>🟢 **{row['source']}** — {row['records_fetched']:,} records</small>",
+                        unsafe_allow_html=True,
+                    )
+
+            st.caption(f"Last update: {_health['logged_at'].max()}")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # APPLY FILTERS
@@ -349,6 +383,12 @@ with map_col:
         )
         df_plot["amt_fmt"] = df_plot["allocated_amount"].apply(lambda x: f"₹{x:,.2f} Cr")
 
+        # Lifecycle fields may be null on partially scraped rows — coerce
+        for col in ("contractor_name", "start_date", "end_date"):
+            if col not in df_plot.columns:
+                df_plot[col] = "—"
+            df_plot[col] = df_plot[col].fillna("—").replace("", "—")
+
         fig = px.scatter_mapbox(
             df_plot,
             lat="latitude", lon="longitude",
@@ -357,17 +397,28 @@ with map_col:
             color_discrete_map=SECTOR_COLORS,
             hover_name="title",
             hover_data={
-                "department": True,
-                "amt_fmt":    True,
-                "status":     True,
-                "state":      True,
-                "district":   True,
-                "block":      True,
-                "bubble":     False,
-                "latitude":   False,
-                "longitude":  False,
+                "department":      True,
+                "amt_fmt":         True,
+                "status":          True,
+                "state":           True,
+                "district":        True,
+                "block":           True,
+                "contractor_name": True,
+                "start_date":      True,
+                "end_date":        True,
+                "bubble":          False,
+                "latitude":        False,
+                "longitude":       False,
             },
-            labels={"amt_fmt": "Allocated", "department": "Dept", "status": "Status", "sector": "Sector"},
+            labels={
+                "amt_fmt":         "Allocated",
+                "department":     "Dept",
+                "status":         "Status",
+                "sector":         "Sector",
+                "contractor_name":"Contractor",
+                "start_date":     "Start",
+                "end_date":       "End",
+            },
             mapbox_style="open-street-map",
             center={"lat": view["lat"], "lon": view["lon"]},
             zoom=view["zoom"],
@@ -503,7 +554,16 @@ TABLE_COLS = {
     "district":         "District",
     "block":            "Block",
     "status":           "Status",
+    "contractor_name":  "Contractor",
+    "start_date":       "Start Date",
+    "end_date":         "End Date",
 }
+
+# Ensure new lifecycle columns exist even if loaded from older sources
+for _c in ("contractor_name", "start_date", "end_date"):
+    if _c not in df.columns:
+        df[_c] = "—"
+    df[_c] = df[_c].fillna("—").replace("", "—")
 
 # Pagination
 PAGE_SIZE = 200
