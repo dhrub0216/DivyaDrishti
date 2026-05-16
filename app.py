@@ -314,7 +314,8 @@ dept_count    = df["department"].nunique()
 
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 c1.metric("💰 Total Budget", f"₹{total_funds:,.1f} Cr")
-c2.metric("📋 Active Tenders", f"{active_count:,}")
+c2.metric("📋 Total Tenders", f"{len(df):,}",
+          delta=f"{active_count} Active", delta_color="off")
 c3.metric("📊 Avg per Tender", f"₹{avg_cost:,.2f} Cr")
 c4.metric("🏆 Largest Tender", f"₹{float(top_row['allocated_amount']):,.1f} Cr",
           delta=str(top_row["sector"]), delta_color="off")
@@ -386,6 +387,16 @@ with map_col:
         )
         df_plot["amt_fmt"] = df_plot["allocated_amount"].apply(lambda x: f"₹{x:,.2f} Cr")
 
+        # Split linear (lat2/lon2 present) vs point geometry
+        if "latitude2" in df_plot.columns:
+            linear_mask = df_plot["latitude2"].notna() & df_plot["longitude2"].notna()
+        else:
+            linear_mask = pd.Series([False] * len(df_plot), index=df_plot.index)
+        df_lines  = df_plot[linear_mask]
+        df_points = df_plot[~linear_mask]
+        # Use points DataFrame for the px.scatter_mapbox base layer
+        df_plot = df_points if not df_points.empty else df_plot
+
         # Lifecycle fields may be null on partially scraped rows — coerce
         for col in ("contractor_name", "start_date", "end_date"):
             if col not in df_plot.columns:
@@ -428,6 +439,46 @@ with map_col:
             height=540,
         )
         fig.update_traces(marker=dict(opacity=0.82, sizemode="area"))
+
+        # ── Linear features (roads / bridges / pipelines) — drawn as lines ──
+        if not df_lines.empty:
+            for sector, group in df_lines.groupby("sector", observed=True):
+                color = SECTOR_COLORS.get(str(sector), "#888")
+                # Build a single multi-line trace per sector for performance
+                lat_seq, lon_seq, hover_seq = [], [], []
+                for _, r in group.iterrows():
+                    lat_seq.extend([float(r["latitude"]), float(r["latitude2"]), None])
+                    lon_seq.extend([float(r["longitude"]), float(r["longitude2"]), None])
+                # Line trace (no per-segment hover)
+                fig.add_trace(go.Scattermapbox(
+                    lat=lat_seq, lon=lon_seq,
+                    mode="lines",
+                    line=dict(width=5, color=color),
+                    opacity=0.75,
+                    hoverinfo="skip",
+                    showlegend=False,
+                    name=f"{sector} (line)",
+                ))
+                # Midpoint marker for hover info
+                mid_lat = [(float(r["latitude"]) + float(r["latitude2"])) / 2 for _, r in group.iterrows()]
+                mid_lon = [(float(r["longitude"]) + float(r["longitude2"])) / 2 for _, r in group.iterrows()]
+                hover_txt = [
+                    f"<b>{r['title']}</b><br>"
+                    f"🏢 {r['department']}<br>"
+                    f"💰 {r['amt_fmt']}<br>"
+                    f"📍 {r['block']}, {r['district']}<br>"
+                    f"📌 {r['status']}"
+                    for _, r in group.iterrows()
+                ]
+                fig.add_trace(go.Scattermapbox(
+                    lat=mid_lat, lon=mid_lon,
+                    mode="markers",
+                    marker=dict(size=10, color=color, opacity=0.95),
+                    hovertext=hover_txt,
+                    hoverinfo="text",
+                    showlegend=False,
+                    name=f"{sector} (line-anchor)",
+                ))
 
         # ── District boundary halo — visual cue showing focus area ──────────
         if drill_level in ("district", "block") and selected_state in DISTRICT_COORDINATES:

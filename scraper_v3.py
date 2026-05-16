@@ -117,6 +117,8 @@ _MIGRATION_COLUMNS = [
     ("start_date",      "TEXT"),
     ("end_date",        "TEXT"),
     ("source_url",      "TEXT"),
+    ("latitude2",       "REAL"),
+    ("longitude2",      "REAL"),
 ]
 
 

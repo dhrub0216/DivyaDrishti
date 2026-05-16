@@ -5,11 +5,60 @@ Pan-India Government Tender Tracker v3.0
 
 import logging
 import json
+import math
+import hashlib
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+
+# ── Geometry helpers: stable hash + linear/point classifier ──────────────
+
+def _stable_hash(s: str) -> int:
+    """Process-stable hash (Python's built-in hash() is randomised per-run)."""
+    return int(hashlib.md5(s.encode("utf-8")).hexdigest()[:8], 16)
+
+
+LINEAR_KEYWORDS = [
+    # Roads
+    "road", "highway", "expressway", "bypass", "four-lan", "bituminous", "resurfac",
+    "widening", "ring road", "service road", "pmgsy",
+    # Bridges
+    "bridge", "flyover", "over-bridge", "over bridge", " rob ", "underpass",
+    # Linear utilities
+    "pipeline", "canal", "drain", "drainage", "sewage line", "sewer",
+    "fibre", "ofc", "bharatnet",
+    "transmission line", "power line", "11kv", "33kv",
+    # Linear transport
+    "metro corridor", "railway track", "track doubling",
+]
+
+
+def is_linear_title(title: str) -> bool:
+    """True if the tender title describes linear infrastructure (line on map)."""
+    if not title:
+        return False
+    t = title.lower()
+    return any(kw in t for kw in LINEAR_KEYWORDS)
+
+
+def linear_endpoints(
+    start_lat: float, start_lon: float, tender_id: str,
+    min_km: float = 1.5, max_km: float = 8.0,
+) -> Tuple[float, float]:
+    """
+    Deterministically derive a line endpoint from a start coord + tender_id.
+    Same tender_id always produces the same endpoint across runs.
+    """
+    h = _stable_hash(tender_id)
+    angle = (h % 360) * math.pi / 180
+    length_km = min_km + ((h >> 8) & 0xFF) / 255.0 * (max_km - min_km)
+    lat_off = (length_km / 111.0) * math.sin(angle)
+    lon_factor = max(0.5, math.cos(math.radians(start_lat)))
+    lon_off = (length_km / (111.0 * lon_factor)) * math.cos(angle)
+    return round(start_lat + lat_off, 6), round(start_lon + lon_off, 6)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -814,12 +863,21 @@ def generate_enterprise_seed_data(n: int = 10_000) -> pd.DataFrame:
     allocated_amounts = np.round(allocated_amounts, 2)
 
     # ---- Geolocation — block-level real coords (district fallback) -------
-    lats = np.empty(n, dtype=np.float64)
-    lons = np.empty(n, dtype=np.float64)
+    lats  = np.empty(n, dtype=np.float64)
+    lons  = np.empty(n, dtype=np.float64)
+    lats2 = np.full(n, np.nan, dtype=np.float64)
+    lons2 = np.full(n, np.nan, dtype=np.float64)
+
     for i in range(n):
         lat_i, lon_i = resolve_coords(states[i], districts[i], blocks[i], rng)
         lats[i] = lat_i
         lons[i] = lon_i
+        # Linear infrastructure (roads/bridges/pipelines) → also compute endpoint
+        if is_linear_title(titles[i]):
+            lat2, lon2 = linear_endpoints(lat_i, lon_i, tender_ids[i])
+            lats2[i] = lat2
+            lons2[i] = lon2
+
     lats = np.round(lats, 6)
     lons = np.round(lons, 6)
 
@@ -874,6 +932,8 @@ def generate_enterprise_seed_data(n: int = 10_000) -> pd.DataFrame:
         "allocated_amount":  allocated_amounts,
         "latitude":          lats,
         "longitude":         lons,
+        "latitude2":         lats2,
+        "longitude2":        lons2,
         "status":            statuses,
         "contractor_name":   contractors,
         "start_date":        start_dates,
@@ -903,7 +963,7 @@ def apply_memory_optimization(df: pd.DataFrame) -> pd.DataFrame:
     if "category" in df.columns:
         df["category"] = pd.Categorical(df["category"])
 
-    for col in ["allocated_amount", "latitude", "longitude"]:
+    for col in ["allocated_amount", "latitude", "longitude", "latitude2", "longitude2"]:
         if col in df.columns:
             df[col] = df[col].astype(np.float32)
 
@@ -933,15 +993,42 @@ def _load_from_sqlite() -> Optional[pd.DataFrame]:
         if count < 10:
             conn.close()
             return None
+        # Auto-migrate old DBs that pre-date latitude2/longitude2 columns
+        for col, sql_type in (("latitude2", "REAL"), ("longitude2", "REAL"),
+                              ("contractor_name", "TEXT"), ("start_date", "TEXT"),
+                              ("end_date", "TEXT"), ("source_url", "TEXT")):
+            try:
+                conn.execute(f"ALTER TABLE tenders ADD COLUMN {col} {sql_type}")
+            except sqlite3.OperationalError:
+                pass
+        conn.commit()
         df = pd.read_sql(
             "SELECT tender_id, title, sector, department, state, district, block, "
-            "       allocated_amount, latitude, longitude, status, source, source_url, "
-            "       contractor_name, start_date, end_date "
+            "       allocated_amount, latitude, longitude, latitude2, longitude2, "
+            "       status, source, source_url, contractor_name, start_date, end_date "
             "FROM tenders",
             conn,
         )
         conn.close()
         logger.info("Loaded %d real scraped records from tenders.db", len(df))
+
+        # Backfill linear endpoints for rows scraped before geometry classifier existed
+        need_classify = df["latitude2"].isna()
+        if need_classify.any():
+            backfilled = 0
+            for idx in df[need_classify].index:
+                title = str(df.at[idx, "title"]) if pd.notna(df.at[idx, "title"]) else ""
+                if is_linear_title(title):
+                    lat = float(df.at[idx, "latitude"]) if pd.notna(df.at[idx, "latitude"]) else None
+                    lon = float(df.at[idx, "longitude"]) if pd.notna(df.at[idx, "longitude"]) else None
+                    if lat is not None and lon is not None:
+                        tid = str(df.at[idx, "tender_id"])
+                        lat2, lon2 = linear_endpoints(lat, lon, tid)
+                        df.at[idx, "latitude2"]  = lat2
+                        df.at[idx, "longitude2"] = lon2
+                        backfilled += 1
+            if backfilled:
+                logger.info("Backfilled %d linear endpoints from titles", backfilled)
         return df
     except Exception as e:
         logger.warning("Could not load tenders.db: %s", e)
