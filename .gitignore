@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+geocache.json
+tenders.json
+.env
