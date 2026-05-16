@@ -5,3 +5,4 @@ tenders.json
 .env
 data/generated_tenders.csv
 
+tenders.db

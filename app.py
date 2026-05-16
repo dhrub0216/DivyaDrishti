@@ -157,10 +157,46 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    if st.button("🔄 Refresh Cache", use_container_width=True):
+
+    # Data source indicator
+    from pathlib import Path
+    db_exists = (Path(__file__).parent / "tenders.db").exists()
+    if db_exists:
+        import sqlite3
+        _cnt = sqlite3.connect(Path(__file__).parent / "tenders.db").execute("SELECT COUNT(*) FROM tenders").fetchone()[0]
+        st.success(f"📡 Real Data — {_cnt:,} scraped tenders in DB")
+    else:
+        st.warning("🧪 Preview mode — seed data. Run scraper for real data.")
+
+    st.markdown("#### 🔄 Run Live Scraper")
+    import subprocess, sys
+    _sources = st.multiselect(
+        "Sources", ["cppp", "gem", "states", "datagov"],
+        default=["cppp", "gem"],
+        help="cppp=Central portal, gem=GeM bids, states=all state NIC portals, datagov=data.gov.in API",
+    )
+    _pages   = st.number_input("Pages per portal", min_value=1, max_value=200, value=10)
+    _api_key = st.text_input("data.gov.in API Key", type="password",
+                              placeholder="Required only for 'datagov' source")
+
+    if st.button("▶ Start Scraping", type="primary", use_container_width=True):
+        cmd = [sys.executable, str(Path(__file__).parent / "scraper_v3.py"),
+               "--sources"] + _sources + ["--pages", str(_pages)]
+        if _api_key:
+            cmd += ["--api-key", _api_key]
+        with st.spinner("Scraping live portals… (may take several minutes)"):
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if result.returncode == 0:
+            st.success("✅ Scraping complete — refreshing data")
+            st.cache_data.clear()
+            st.rerun()
+        else:
+            st.error("Scraper error — check logs")
+            st.code((result.stderr or result.stdout)[-3000:])
+
+    if st.button("🔄 Refresh Display", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-    st.caption("Source: GEM + CPPP + State Portals (Seed)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

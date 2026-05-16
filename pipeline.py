@@ -671,14 +671,51 @@ def apply_memory_optimization(df: pd.DataFrame) -> pd.DataFrame:
 # LOAD / CACHE
 # ---------------------------------------------------------------------------
 
+def _load_from_sqlite() -> Optional[pd.DataFrame]:
+    """
+    Load scraped real data from tenders.db (written by scraper_v3.py).
+    Returns None if DB doesn't exist or has fewer than 10 rows.
+    """
+    import sqlite3
+    db_path = BASE_DIR / "tenders.db"
+    if not db_path.exists():
+        return None
+    try:
+        conn = sqlite3.connect(db_path)
+        count = conn.execute("SELECT COUNT(*) FROM tenders").fetchone()[0]
+        if count < 10:
+            conn.close()
+            return None
+        df = pd.read_sql(
+            "SELECT tender_id, title, sector, department, state, district, block, "
+            "       allocated_amount, latitude, longitude, status, source "
+            "FROM tenders",
+            conn,
+        )
+        conn.close()
+        logger.info("Loaded %d real scraped records from tenders.db", len(df))
+        return df
+    except Exception as e:
+        logger.warning("Could not load tenders.db: %s", e)
+        return None
+
+
 def load_enterprise_tender_stream() -> pd.DataFrame:
     """
-    Load tender data from CSV cache if available, otherwise generate fresh.
+    Load priority:
+      1. tenders.db  — real scraped data from scraper_v3.py
+      2. generated_tenders.csv — seed data (fallback while scraper hasn't run)
 
     Returns a memory-optimised pandas DataFrame.
     """
-    csv_file = BASE_DIR / "data" / "generated_tenders.csv"
+    # Priority 1: real scraped data
+    df = _load_from_sqlite()
+    if df is not None:
+        df = apply_memory_optimization(df)
+        return df
 
+    # Priority 2: generated seed CSV
+    csv_file = BASE_DIR / "data" / "generated_tenders.csv"
     if csv_file.exists():
         logger.info("Cache file found at %s — reading ...", csv_file)
         try:
@@ -687,19 +724,15 @@ def load_enterprise_tender_stream() -> pd.DataFrame:
                 logger.info("Loaded %d rows from cache.", len(df))
                 df = apply_memory_optimization(df)
                 return df
-            else:
-                logger.warning("Cache has only %d rows — regenerating.", len(df))
         except Exception as exc:
             logger.warning("Failed to read cache (%s) — regenerating.", exc)
-    else:
-        logger.info("No cache file at %s — generating data ...", csv_file)
 
+    # Last resort: generate seed data
+    logger.info("No real data yet — generating seed data for UI preview …")
     df = generate_enterprise_seed_data(10_000)
-
     csv_file.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(csv_file, index=False)
-    logger.info("Saved %d rows to %s", len(df), csv_file)
-
+    logger.info("Saved %d seed rows to %s", len(df), csv_file)
     df = apply_memory_optimization(df)
     return df
 
