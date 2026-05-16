@@ -733,13 +733,23 @@ def run_pipeline(
                            error_code=type(e).__name__, error_msg=str(e))
                 logger.error("[OGD] Pipeline failed: %s", e)
 
-    # 5. Geocode any missing coordinates
+    # 5. Geocode any missing coordinates (fast — district-level only)
     geocode_missing_db(conn)
 
     total = conn.execute("SELECT COUNT(*) FROM tenders").fetchone()[0]
     conn.close()
 
     return summary, total
+
+
+def run_entity_enrichment(limit: int = 500) -> int:
+    """
+    Real-world entity geocoding pass (slow — Nominatim 1 req/sec).
+    Pulls real lat/lon by parsing each tender title for hospitals, schools,
+    roads (A→B), etc., and replacing the district-centre approximation.
+    """
+    from entity_geocoder import enrich_db_geocode
+    return enrich_db_geocode(str(DB_PATH), limit=limit)
 
 
 # ─── CLI ───────────────────────────────────────────────────────────────────────
@@ -765,7 +775,19 @@ if __name__ == "__main__":
                         help="data.gov.in API key (required for --sources datagov)")
     parser.add_argument("--states",   nargs="+", default=None,
                         help="Limit state portals (e.g. --states Bihar 'Uttar Pradesh')")
+    parser.add_argument("--enrich-entities", action="store_true",
+                        help="Skip scraping; only run Nominatim entity geocoding "
+                             "on existing tenders.db rows.")
+    parser.add_argument("--enrich-limit", type=int, default=500,
+                        help="Max rows to enrich per run (Nominatim is rate-limited).")
     args = parser.parse_args()
+
+    # Standalone entity enrichment mode
+    if args.enrich_entities:
+        from entity_geocoder import enrich_db_geocode
+        n = enrich_db_geocode(str(DB_PATH), limit=args.enrich_limit)
+        print(f"\n✅ Entity enrichment complete — {n} rows updated\n")
+        raise SystemExit(0)
 
     headless = args.headless.lower() == "true"
 

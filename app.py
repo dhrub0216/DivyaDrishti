@@ -202,6 +202,32 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
+    # ── Entity Geocoder — replaces district-centre approximations with real OSM coords
+    st.markdown("---")
+    st.markdown("#### 🌐 Entity Geocoder")
+    st.caption("Replaces district-centre placement with real OSM coords for hospitals, "
+               "schools, road A→B endpoints. Uses Nominatim — ~1 record/sec.")
+    _enrich_limit = st.number_input(
+        "Records to enrich (per run)",
+        min_value=10, max_value=2000, value=200, step=50,
+    )
+    if st.button("🌐 Run Entity Geocoding", use_container_width=True):
+        if not (Path(__file__).parent / "tenders.db").exists():
+            st.warning("No tenders.db found. Run the scraper first.")
+        else:
+            cmd = [sys.executable, str(Path(__file__).parent / "scraper_v3.py"),
+                   "--enrich-entities", "--enrich-limit", str(_enrich_limit)]
+            with st.spinner(f"Geocoding ~{_enrich_limit} records (≈ {_enrich_limit} seconds)…"):
+                result = subprocess.run(cmd, capture_output=True, text=True,
+                                         timeout=max(60, _enrich_limit * 2))
+            if result.returncode == 0:
+                st.success("✅ Entity geocoding complete")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("Enrichment failed — see logs")
+                st.code((result.stderr or result.stdout)[-2500:])
+
     # ── System Health (failed_domains visibility) ─────────────────────────
     st.markdown("---")
     with st.expander("🩺 Data Source Health", expanded=False):
