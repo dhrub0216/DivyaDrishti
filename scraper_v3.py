@@ -449,12 +449,26 @@ def scrape_gem(max_pages: int, headless: bool, conn: sqlite3.Connection = None) 
                         if len(lines) < 3:
                             continue
 
-                        bid_no    = next((l for l in lines if re.match(r"GEM/\d{4}/", l)), lines[0])
-                        title     = next((l for l in lines if len(l) > 20), lines[1])
-                        ministry  = next((l for l in lines if any(
+                        # Extract bid number (anywhere in card, not just first line)
+                        bid_no = next((l for l in lines if re.search(r"GEM/\d{4}/", l)), "")
+                        bid_no = re.search(r"GEM/\d{4}/[\w/]+", bid_no or "")
+                        bid_no = bid_no.group(0) if bid_no else (lines[0] if lines else "GEM-UNKNOWN")
+
+                        # Title: prefer "Item" / work description, NOT lines that just
+                        # echo the bid number.
+                        BID_NO_RE = re.compile(r"^(bid\s*no|gem/\d{4})", re.I)
+                        candidates = [l for l in lines if len(l) > 20 and not BID_NO_RE.match(l)]
+                        title = candidates[0] if candidates else (lines[1] if len(lines) > 1 else lines[0])
+
+                        # Ministry / Department
+                        ministry = next((l for l in lines if any(
                             kw in l.lower() for kw in ["ministry", "department", "govt"]
                         )), "Government of India")
-                        amount_raw = next((l for l in lines if re.search(r"₹|lakh|crore|\d+\.\d+", l, re.I)), "0")
+
+                        # Amount — first line with ₹ / lakh / crore / Indian-format number
+                        amount_raw = next((l for l in lines if re.search(
+                            r"₹|lakh|crore|\d[\d,]{3,}", l, re.I)
+                        ), "0")
 
                         records.append(make_record(
                             tender_id  = bid_no[:120],
@@ -463,6 +477,7 @@ def scrape_gem(max_pages: int, headless: bool, conn: sqlite3.Connection = None) 
                             amount_str = amount_raw,
                             state      = "Central (GeM)",
                             source     = "GEM Bidplus",
+                            source_url = page.url,
                             status     = "Active",
                         ))
                 else:
@@ -742,6 +757,113 @@ def run_pipeline(
     return summary, total
 
 
+def deep_scrape_details(limit: int = 100, headless: bool = True) -> dict:
+    """
+    Visit each tender's detail page and read the FULL contract description,
+    then re-classify sector / state / district from the richer text.
+
+    Targets DB rows where district='Unknown' OR sector IN ('Other', 'General').
+    For GeM bids the detail URL is the bid number used as path on bidplus;
+    for NIC tenders we use the stored source_url.
+
+    Rate-limited (1.5 sec per page) to stay polite to portals.
+    """
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    from reclassifier import classify_sector_v2, extract_state, extract_district, extract_block
+
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT tender_id, source, source_url, title, department, state, district, sector
+           FROM tenders
+           WHERE (district IS NULL OR district = 'Unknown'
+                  OR sector IN ('Other', 'General', NULL))
+           LIMIT ?""",
+        (limit,),
+    ).fetchall()
+
+    if not rows:
+        logger.info("[DEEP] No rows need deep scraping.")
+        conn.close()
+        return {"scraped": 0, "updated": 0, "failed": 0}
+
+    logger.info("[DEEP] Will visit %d detail pages (≈%d min @ 1.5 sec/page)",
+                len(rows), int(len(rows) * 1.5 / 60) + 1)
+
+    stats = {"scraped": 0, "updated": 0, "failed": 0}
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=headless)
+        ctx = browser.new_context(
+            user_agent=("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"),
+        )
+        page = ctx.new_page()
+        page.set_default_timeout(20_000)
+
+        for row in rows:
+            tender_id = row["tender_id"]
+            src       = row["source"] or ""
+            url       = row["source_url"] or ""
+
+            # Build detail URL
+            if "GEM" in src:
+                clean_id = re.sub(r"^Bid\s*No.?:?\s*", "", tender_id, flags=re.I).strip()
+                detail_url = f"https://bidplus.gem.gov.in/showbidDocument/{clean_id}"
+            elif url:
+                detail_url = url
+            else:
+                continue
+
+            try:
+                page.goto(detail_url, wait_until="domcontentloaded", timeout=20_000)
+                page.wait_for_timeout(1500)
+                full_text = page.content()
+                # Strip HTML for keyword extraction
+                plain = re.sub(r"<[^>]+>", " ", full_text)
+                plain = re.sub(r"\s+", " ", plain).strip()
+
+                # Apply reclassifier to the much richer text
+                title_full = (row["title"] or "") + " " + plain[:4000]
+                dept_full  = row["department"] or ""
+
+                new_sector   = classify_sector_v2(title_full, dept_full)
+                new_state    = extract_state(title_full, dept_full) or row["state"]
+                new_district = extract_district(title_full, dept_full, new_state) or row["district"]
+                new_block    = extract_block(title_full, dept_full, new_state, new_district)
+
+                if (new_sector != row["sector"]
+                        or new_state != row["state"]
+                        or new_district != row["district"]):
+                    conn.execute(
+                        """UPDATE tenders
+                           SET sector=?, state=?, district=?, block=COALESCE(?, block)
+                           WHERE tender_id=?""",
+                        (new_sector, new_state, new_district, new_block, tender_id),
+                    )
+                    stats["updated"] += 1
+
+                stats["scraped"] += 1
+
+                if stats["scraped"] % 20 == 0:
+                    conn.commit()
+                    logger.info("[DEEP] %d / %d done — %d updated",
+                                stats["scraped"], len(rows), stats["updated"])
+
+                time.sleep(1.5)
+            except PWTimeout:
+                stats["failed"] += 1
+            except Exception as e:
+                logger.warning("[DEEP] %s — %s", tender_id, e)
+                stats["failed"] += 1
+
+        browser.close()
+
+    conn.commit()
+    conn.close()
+    logger.info("[DEEP] Complete — %s", stats)
+    return stats
+
+
 def run_entity_enrichment(limit: int = 500) -> int:
     """
     Real-world entity geocoding pass (slow — Nominatim 1 req/sec).
@@ -780,6 +902,14 @@ if __name__ == "__main__":
                              "on existing tenders.db rows.")
     parser.add_argument("--enrich-limit", type=int, default=500,
                         help="Max rows to enrich per run (Nominatim is rate-limited).")
+    parser.add_argument("--deep-scrape", action="store_true",
+                        help="Visit each tender's detail page to read full contract text, "
+                             "then re-classify sector/state/district from richer content.")
+    parser.add_argument("--deep-limit", type=int, default=100,
+                        help="Max detail pages to scrape per run.")
+    parser.add_argument("--reclassify", action="store_true",
+                        help="Run in-memory text reclassifier and persist to DB "
+                             "(no network — fast).")
     args = parser.parse_args()
 
     # Standalone entity enrichment mode
@@ -787,6 +917,20 @@ if __name__ == "__main__":
         from entity_geocoder import enrich_db_geocode
         n = enrich_db_geocode(str(DB_PATH), limit=args.enrich_limit)
         print(f"\n✅ Entity enrichment complete — {n} rows updated\n")
+        raise SystemExit(0)
+
+    # Standalone reclassifier mode (offline — fast)
+    if args.reclassify:
+        from reclassifier import reclassify_db
+        res = reclassify_db(str(DB_PATH))
+        print(f"\n✅ Reclassification complete — {res}\n")
+        raise SystemExit(0)
+
+    # Standalone deep-scrape mode (visit detail pages)
+    if args.deep_scrape:
+        stats = deep_scrape_details(limit=args.deep_limit,
+                                    headless=(args.headless.lower() == "true"))
+        print(f"\n✅ Deep scrape complete — {stats}\n")
         raise SystemExit(0)
 
     headless = args.headless.lower() == "true"

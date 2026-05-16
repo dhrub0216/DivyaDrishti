@@ -228,6 +228,56 @@ with st.sidebar:
                 st.error("Enrichment failed — see logs")
                 st.code((result.stderr or result.stdout)[-2500:])
 
+    # ── Reclassifier — eliminates 'Other' / 'Unknown' from text ──────────
+    st.markdown("---")
+    st.markdown("#### 🔍 Re-classify Sector / Location")
+    st.caption("Reads each tender's title + department text and replaces "
+               "'Other'/'Unknown' with proper sector, state, district, block. "
+               "Runs offline (no network) — takes seconds.")
+    if st.button("🔍 Reclassify Database", use_container_width=True):
+        if not (Path(__file__).parent / "tenders.db").exists():
+            st.warning("No tenders.db found. Run the scraper first.")
+        else:
+            cmd = [sys.executable, str(Path(__file__).parent / "scraper_v3.py"), "--reclassify"]
+            with st.spinner("Reclassifying records…"):
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode == 0:
+                st.success("✅ Reclassification complete")
+                st.code(result.stdout[-500:])
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("Reclassify failed")
+                st.code((result.stderr or result.stdout)[-2500:])
+
+    # ── Deep scrape — visit detail pages to read full contract text ──────
+    st.markdown("---")
+    st.markdown("#### 📄 Deep Scrape (Contract Text)")
+    st.caption("For each tender, visits the portal's detail page, reads the "
+               "FULL work description + scope of work, then re-classifies "
+               "sector/state/district from the richer content. Slow (~1.5s "
+               "per record) but most accurate.")
+    _deep_limit = st.number_input(
+        "Detail pages to fetch", min_value=10, max_value=2000, value=100, step=20,
+    )
+    if st.button("📄 Run Deep Scrape", use_container_width=True):
+        if not (Path(__file__).parent / "tenders.db").exists():
+            st.warning("No tenders.db found. Run the scraper first.")
+        else:
+            cmd = [sys.executable, str(Path(__file__).parent / "scraper_v3.py"),
+                   "--deep-scrape", "--deep-limit", str(_deep_limit)]
+            with st.spinner(f"Visiting ~{_deep_limit} detail pages (≈ {int(_deep_limit*1.5/60)+1} min)…"):
+                result = subprocess.run(cmd, capture_output=True, text=True,
+                                         timeout=max(300, _deep_limit * 3))
+            if result.returncode == 0:
+                st.success("✅ Deep scrape complete")
+                st.code(result.stdout[-1000:])
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("Deep scrape failed")
+                st.code((result.stderr or result.stdout)[-2500:])
+
     # ── System Health (failed_domains visibility) ─────────────────────────
     st.markdown("---")
     with st.expander("🩺 Data Source Health", expanded=False):

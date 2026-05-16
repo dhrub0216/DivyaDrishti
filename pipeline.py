@@ -1094,6 +1094,14 @@ def _load_from_sqlite() -> Optional[pd.DataFrame]:
 
         # Disambiguate stacked / missing coords with deterministic per-tender jitter
         df = _disambiguate_within_district(df)
+
+        # Re-classify sector/state/district/block from title+dept text (replaces
+        # 'Other' and 'Unknown' placeholders left by scrapers).
+        try:
+            from reclassifier import reclassify_dataframe
+            reclassify_dataframe(df)
+        except Exception as e:
+            logger.warning("Reclassifier skipped: %s", e)
         return df
     except Exception as e:
         logger.warning("Could not load tenders.db: %s", e)
