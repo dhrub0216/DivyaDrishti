@@ -1,0 +1,105 @@
+tender_id,title,category,allocated_amount,state,district,block,latitude,longitude,status,department
+NIT-UP-001,Four-Lane Highway Expansion NH-28 Lucknow Bypass,Road,45.20,Uttar Pradesh,Lucknow,Sarojini Nagar,26.8467,80.9462,Active,National Highway Authority
+NIT-UP-002,Construction of Flyover at Charbagh Junction Lucknow,Bridge,28.75,Uttar Pradesh,Lucknow,Alambagh,26.8358,80.9239,Awarded,UP Bridge Corporation
+NIT-UP-003,Underground Drainage Modernisation Lucknow Municipal,Water,18.40,Uttar Pradesh,Lucknow,Gomti Nagar,26.8600,80.9900,Active,Jal Nigam UP
+NIT-UP-004,Smart Road Agra Taj East Gate Connectivity,Road,12.60,Uttar Pradesh,Agra,Tajganj,27.1767,78.0081,Active,PWD Uttar Pradesh
+NIT-UP-005,Ganga Expressway Land Acquisition Phase-3 Agra,Road,110.50,Uttar Pradesh,Agra,Khandauli,27.0300,78.1500,Active,UP Expressway Authority
+NIT-UP-006,Bridge over Yamuna River Agra-Firozabad Stretch,Bridge,65.30,Uttar Pradesh,Agra,Fatehabad,27.1600,78.2300,Awarded,UP Bridge Corporation
+NIT-UP-007,Rural Road PMGSY Phase-IV Varanasi Cluster,Road,8.90,Uttar Pradesh,Varanasi,Kashi Vidyapeeth,25.3176,82.9739,Active,Rural Engineering Department
+NIT-UP-008,Ghat Renovation & Tourism Infrastructure Varanasi,Building,22.15,Uttar Pradesh,Varanasi,Dashashwamedh,25.3065,83.0107,Active,Tourism Dept UP
+NIT-UP-009,Smart City Water ATM Network Kanpur,Water,14.80,Uttar Pradesh,Kanpur,Kidwai Nagar,26.4499,80.3319,Completed,Smart City Kanpur Ltd
+NIT-UP-010,Kanpur Metro Phase-2 Track Construction,Road,320.00,Uttar Pradesh,Kanpur,Nawabganj,26.4673,80.3500,Active,Kanpur Metro Rail Corp
+NIT-MH-001,Mumbai Coastal Road Phase-2 Worli-Nariman,Road,1250.00,Maharashtra,Mumbai,Worli,19.0176,72.8562,Active,MMRDA
+NIT-MH-002,Pune-Nashik Expressway Land Acquisition,Road,890.40,Maharashtra,Pune,Shivaji Nagar,18.5204,73.8567,Active,Maharashtra Road Dev Corp
+NIT-MH-003,Nashik Godavari Riverfront Development,Building,45.60,Maharashtra,Nashik,Panchavati,20.0060,73.7908,Active,Nashik Municipal Corp
+NIT-MH-004,Nagpur Metro Phase-3 Extension Butibori,Road,425.00,Maharashtra,Nagpur,Butibori,21.0000,79.0500,Awarded,Nagpur Metro Rail Corp
+NIT-MH-005,Aurangabad Industrial Water Supply Scheme,Water,38.90,Maharashtra,Aurangabad,Waluj,19.8762,75.3433,Active,MIDC Maharashtra
+NIT-MH-006,Solapur Airport Road Widening Project,Road,22.40,Maharashtra,Solapur,South Solapur,17.6805,75.9064,Active,PWD Maharashtra
+NIT-RJ-001,Jaipur Ring Road Phase-3 Bypass Construction,Road,185.00,Rajasthan,Jaipur,Sanganer,26.7796,75.8333,Active,Rajasthan Road Dev Corp
+NIT-RJ-002,Jal Jeevan Mission Rural Water Supply Ajmer,Water,28.50,Rajasthan,Ajmer,Pisangan,26.4499,74.6399,Active,PHED Rajasthan
+NIT-RJ-003,Desert Highway Jaisalmer-Barmer Strengthening,Road,95.20,Rajasthan,Jaisalmer,Nokha,26.9157,70.9083,Active,NHAI Zone Rajasthan
+NIT-RJ-004,Udaipur Lake Conservation & Promenade,Building,32.70,Rajasthan,Udaipur,Girwa,24.5854,73.7125,Awarded,Rajasthan Tourism Dev Corp
+NIT-RJ-005,Kota Barrage Road Bridge Modernisation,Bridge,44.10,Rajasthan,Kota,Ladpura,25.1490,75.8648,Active,Water Resources Rajasthan
+NIT-MP-001,Bhopal Expressway Hoshangabad NH-12 Upgrade,Road,215.00,Madhya Pradesh,Bhopal,Huzur,23.2599,77.4126,Active,NHAI MP Zone
+NIT-MP-002,Indore Smart City BRTS Corridor Phase-2,Road,78.40,Madhya Pradesh,Indore,Rajendra Nagar,22.7196,75.8577,Active,Smart City Indore Ltd
+NIT-MP-003,Narmada Drinking Water Project Jabalpur,Water,55.60,Madhya Pradesh,Jabalpur,Panagar,23.1815,79.9864,Active,Narmada Dev Authority MP
+NIT-MP-004,Gwalior Fort Heritage Road Access,Road,18.90,Madhya Pradesh,Gwalior,Morar,26.2183,78.1828,Completed,ASI & PWD MP
+NIT-KA-001,Bangalore Peripheral Ring Road East Segment,Road,2200.00,Karnataka,Bangalore Urban,Whitefield,12.9698,77.7500,Active,BBMP
+NIT-KA-002,Mysore-Kushalnagar 4-Lane Highway,Road,320.50,Karnataka,Mysore,Hunsur,12.3052,76.4532,Active,KRDCL
+NIT-KA-003,Hubli Smart Water Distribution Network,Water,42.30,Karnataka,Hubli-Dharwad,Dharwad,15.4589,75.0078,Active,KUWSDB
+NIT-KA-004,Mangalore Port Access Road Widening,Road,88.60,Karnataka,Dakshina Kannada,Mangalore South,12.8698,74.8428,Awarded,Karnataka PWD
+NIT-KA-005,Belgaum AIIMS Hospital Building Phase-2,Building,185.00,Karnataka,Belagavi,Belagavi City,15.8497,74.4977,Active,CPWD
+NIT-TN-001,Chennai OMR IT Corridor Road Expansion,Road,450.00,Tamil Nadu,Chennai,Sholinganallur,12.9001,80.2276,Active,CMDA
+NIT-TN-002,Coimbatore Outer Ring Road Phase-3,Road,280.40,Tamil Nadu,Coimbatore,Peelamedu,11.0238,76.9626,Active,NHAI Tamil Nadu
+NIT-TN-003,Madurai Vaigai Riverfront Development,Building,65.20,Tamil Nadu,Madurai,Anna Nagar,9.9252,78.1198,Awarded,Madurai Corp
+NIT-TN-004,Salem Steel Plant Road Infrastructure,Road,48.90,Tamil Nadu,Salem,Edappadi,11.6643,78.1460,Active,Salem Corp
+NIT-TN-005,Tirunelveli Flood Drain Canal Widening,Water,35.70,Tamil Nadu,Tirunelveli,Palayamkottai,8.7139,77.7567,Active,WRD Tamil Nadu
+NIT-WB-001,Kolkata East-West Metro Corridor Extension,Road,1850.00,West Bengal,Kolkata,Salt Lake,22.5726,88.3639,Active,Kolkata Metro Rail Corp
+NIT-WB-002,Howrah Bridge Approach Road Strengthening,Bridge,125.00,West Bengal,Howrah,Shibpur,22.5840,88.3423,Active,NHAI West Bengal
+NIT-WB-003,Durgapur Expressway Smart Lanes Retrofit,Road,95.40,West Bengal,Burdwan,Durgapur,23.5204,87.3119,Completed,WB Highway Dev Corp
+NIT-WB-004,Siliguri Water Treatment Plant Expansion,Water,48.30,West Bengal,Darjeeling,Siliguri,26.7271,88.3953,Active,PHED West Bengal
+NIT-WB-005,Sunderbans Floating Bridge Connectivity,Bridge,38.90,West Bengal,South 24 Parganas,Namkhana,21.7667,88.2500,Awarded,WB Irrigation Dept
+NIT-GJ-001,Ahmedabad Metro Phase-2 Naranpura Corridor,Road,780.00,Gujarat,Ahmedabad,Naranpura,23.0505,72.5300,Active,MEGA Gujarat
+NIT-GJ-002,Surat Diamond Bourse Road Access Project,Road,125.60,Gujarat,Surat,Vesu,21.1702,72.7700,Active,Surat Municipal Corp
+NIT-GJ-003,Rajkot Smart City Water Recycling Plant,Water,68.40,Gujarat,Rajkot,Aji Dam,22.3039,70.8022,Active,Smart City Rajkot Ltd
+NIT-GJ-004,Vadodara Narmada Water Supply Augmentation,Water,88.20,Gujarat,Vadodara,Ajwa,22.3072,73.1812,Awarded,Gujarat Water Supply Board
+NIT-GJ-005,Kutch Border Road NH-341 Strengthening,Road,145.00,Gujarat,Kutch,Bhachau,23.2893,70.3470,Active,BRO Gujarat Zone
+NIT-TS-001,Hyderabad Outer Ring Road Maintenance Spur,Road,320.00,Telangana,Hyderabad,Patancheru,17.5169,78.2646,Active,HMDA
+NIT-TS-002,Warangal Kazipet Railway Road Over Bridge,Bridge,85.40,Telangana,Warangal,Kazipet,18.0000,79.5000,Active,Telangana Roads Dept
+NIT-TS-003,Khammam Smart Water Supply Phase-3,Water,42.80,Telangana,Khammam,Khammam Urban,17.2473,80.1514,Active,HMWSSB
+NIT-TS-004,Nizamabad Dichpally Industrial Road,Road,38.60,Telangana,Nizamabad,Dichpally,18.2000,78.1500,Awarded,Telangana PWD
+NIT-AP-001,Visakhapatnam Metro Phase-1 Beach Road,Road,950.00,Andhra Pradesh,Visakhapatnam,Gajuwaka,17.6868,83.2185,Active,VMRDA
+NIT-AP-002,Amaravati Capital City Road Network Phase-2,Road,1400.00,Andhra Pradesh,Guntur,Amaravati,16.5062,80.5157,Active,CRDA Andhra Pradesh
+NIT-AP-003,Tirupati Outer Ring Road & Pilgrim Access,Road,185.00,Andhra Pradesh,Chittoor,Renigunta,13.5635,79.5500,Active,NHAI AP Zone
+NIT-AP-004,Kurnool Tungabhadra Flood Embankment,Water,55.40,Andhra Pradesh,Kurnool,Nandyal,15.4786,78.4839,Awarded,AP Irrigation Dept
+NIT-JH-001,Ranchi Jharkhand Expressway Phase-1,Road,485.00,Jharkhand,Ranchi,Namkum,23.3441,85.3096,Active,Jharkhand Road Proj Corp
+NIT-JH-002,Dhanbad Coal Belt Road Dust Mitigation,Road,28.60,Jharkhand,Dhanbad,Jharia,23.7957,86.4304,Active,Dhanbad Municipal Corp
+NIT-JH-003,Jamshedpur Kharkai River Embankment,Water,45.20,Jharkhand,East Singhbhum,Jugsalai,22.8046,86.2029,Active,WRD Jharkhand
+NIT-OD-001,Bhubaneswar Smart City Roads Package-5,Road,125.00,Odisha,Khurda,Bhubaneswar,20.2961,85.8245,Active,BDA Odisha
+NIT-OD-002,Puri Jagannath Corridor Road Expansion,Road,88.40,Odisha,Puri,Puri Urban,19.8135,85.8312,Awarded,Puri Dev Authority
+NIT-OD-003,Rourkela Brahmaputra Water Pipeline,Water,48.90,Odisha,Sundargarh,Rourkela,22.2604,84.8536,Active,Rourkela Smart City Ltd
+NIT-OD-004,Cuttack Mahanadi Bridge Repair & Widening,Bridge,62.30,Odisha,Cuttack,Cuttack City,20.4625,85.8830,Active,Odisha Bridge Corp
+NIT-PB-001,Chandigarh Ludhiana Expressway Phase-2,Road,680.00,Punjab,Ludhiana,Sahnewal,30.8672,75.8961,Active,NHAI Punjab Zone
+NIT-PB-002,Amritsar Heritage Road Golden Temple Zone,Road,35.40,Punjab,Amritsar,Golden Temple,31.6200,74.8765,Active,Amritsar Smart City Ltd
+NIT-PB-003,Patiala Underground Drainage Modernisation,Water,42.10,Punjab,Patiala,Urban Estate,30.3398,76.3869,Active,PUDA Punjab
+NIT-HR-001,Delhi-Gurugram Expressway NH-48 Smart Lanes,Road,420.00,Haryana,Gurugram,DLF Phase 1,28.4595,77.0266,Active,NHAI Haryana
+NIT-HR-002,Faridabad Urban Road Widening Package-3,Road,78.50,Haryana,Faridabad,Sector 21C,28.4089,77.3178,Awarded,Haryana PWD
+NIT-HR-003,Hisar Canal Water Distribution Upgrade,Water,38.60,Haryana,Hisar,Hisar Urban,29.1492,75.7217,Active,Haryana Irrigation Dept
+NIT-DL-001,Delhi Dwarka Expressway Utility Shifting,Road,185.00,Delhi,West Delhi,Dwarka Sector 21,28.5524,77.0516,Active,NHAI Delhi Zone
+NIT-DL-002,Delhi Yamuna Floodplain Road Embankment,Water,95.40,Delhi,East Delhi,Mayur Vihar,28.6085,77.2990,Active,DJB
+NIT-DL-003,Rohini Urban Road Resurfacing Phase-6,Road,45.20,Delhi,North West Delhi,Rohini Sector 15,28.7395,77.0596,Completed,PWD Delhi
+NIT-DL-004,Delhi AIIMS Trauma Centre Expansion Building,Building,220.00,Delhi,South Delhi,Safdarjung,28.5680,77.2098,Active,CPWD Delhi
+NIT-BR-001,Patna Metro Phase-1 Patliputra Corridor,Road,2800.00,Bihar,Patna,Patliputra,25.6177,85.0997,Active,Patna Metro Rail Corp
+NIT-BR-002,Patna PMAY Housing Project Phase-4,Building,125.00,Bihar,Patna,Phulwari Sharif,25.5600,85.1300,Active,PMAY Bihar
+NIT-BR-003,Muzaffarpur Ring Road Phase-2,Road,185.40,Bihar,Muzaffarpur,Motipur,26.1197,85.3910,Awarded,Bihar State Road Dev Corp
+NIT-BR-004,Gaya Buddhist Circuit Road Upgrade,Road,88.60,Bihar,Gaya,Bodhgaya,24.6961,84.9878,Active,Tourism Dept Bihar
+NIT-BR-005,Bhagalpur Vikramshila Bridge Approach Road,Bridge,48.90,Bihar,Bhagalpur,Naugachia,25.2425,86.9842,Active,Bihar Bridge Corp
+NIT-BR-006,Darbhanga Flood Embankment Strengthening,Water,35.70,Bihar,Darbhanga,Bahera,26.1542,85.8918,Active,WRD Bihar
+NIT-BR-007,Samastipur Kalyanpur-Warisnagar Road,Road,3.45,Bihar,Samastipur,Kalyanpur,25.8900,85.7600,Active,Rural Works Dept
+NIT-BR-008,Samastipur High-Level Bridge Rosera-Bagmati,Bridge,14.30,Bihar,Samastipur,Rosera,25.9800,85.9700,Awarded,Bihar Bridge Corp
+NIT-BR-009,Samastipur Urban Water Network Modernisation,Water,9.50,Bihar,Samastipur,Samastipur Urban,25.8624,85.7810,Active,PHED Bihar
+NIT-BR-010,Samastipur Dalsinghsarai NH-28 Service Road,Road,8.75,Bihar,Samastipur,Dalsinghsarai,25.6700,85.8300,Active,NHAI Bihar
+NIT-BR-011,Samastipur CHC Dalsinghsarai Health Centre,Building,7.20,Bihar,Samastipur,Dalsinghsarai,25.6600,85.8400,Active,Health Dept Bihar
+NIT-BR-012,Samastipur Warisnagar Police Station Complex,Building,4.40,Bihar,Samastipur,Warisnagar,25.8550,85.9050,Active,Home Dept Bihar
+NIT-BR-013,Samastipur Patori Flood Drainage Canal,Water,4.15,Bihar,Samastipur,Patori,25.9300,85.8600,Awarded,WRD Bihar
+NIT-BR-014,Samastipur Solar Street Lighting Rural Areas,Building,3.10,Bihar,Samastipur,Samastipur Urban,25.8624,85.7810,Active,Energy Dept Bihar
+NIT-BR-015,Samastipur Singhia Budhi Gandak Bridge,Bridge,6.80,Bihar,Samastipur,Singhia,25.8276,86.1757,Active,Bihar Bridge Corp
+NIT-AS-001,Guwahati Ring Road Phase-2 North Bank,Road,285.00,Assam,Kamrup Metro,Dispur,26.1445,91.7362,Active,NHAI Assam Zone
+NIT-AS-002,Brahmaputra Flood Embankment Dibrugarh,Water,65.40,Assam,Dibrugarh,Dibrugarh East,27.4728,94.9120,Active,Assam WRD
+NIT-AS-003,Silchar Barak Bridge Widening,Bridge,42.80,Assam,Cachar,Silchar,24.8333,92.7789,Active,PWD Assam
+NIT-HP-001,Shimla Bypass Road Tunnel Phase-2,Road,485.00,Himachal Pradesh,Shimla,Mashobra,31.1048,77.1734,Active,NHAI HP Zone
+NIT-HP-002,Manali-Leh Highway Winter Package,Road,325.00,Himachal Pradesh,Kullu,Manali,32.2396,77.1887,Active,BRO Himachal
+NIT-UK-001,Dehradun-Haridwar Expressway Phase-1,Road,680.00,Uttarakhand,Dehradun,Raipur,30.3165,78.0322,Active,UPEIDA Uttarakhand
+NIT-UK-002,Char Dham Highway Package Kedarnath Zone,Road,420.00,Uttarakhand,Rudraprayag,Ukhimath,30.5700,79.0900,Active,NHIDCL
+NIT-UK-003,Haridwar Ganga Ghats Renovation,Building,55.40,Uttarakhand,Haridwar,Har ki Pauri,29.9457,78.1642,Awarded,Tourism Dept Uttarakhand
+NIT-KL-001,Kochi Water Metro Phase-2 Expansion,Water,485.00,Kerala,Ernakulam,Fort Kochi,9.9312,76.2673,Active,Kochi Metro Rail Ltd
+NIT-KL-002,Thiruvananthapuram Bypass NH-66 Widening,Road,225.00,Kerala,Thiruvananthapuram,Kazhakuttam,8.5241,76.9366,Active,NHAI Kerala Zone
+NIT-KL-003,Kozhikode Smart City Road Package-3,Road,88.40,Kerala,Kozhikode,Beypore,11.1085,75.8038,Active,Kozhikode Corp
+NIT-CG-001,Raipur Smart City Road & Drain Package-4,Road,95.40,Chhattisgarh,Raipur,Avanti Vihar,21.2514,81.6296,Active,Smart City Raipur Ltd
+NIT-CG-002,Bilaspur NH-130 Four-Lane Conversion,Road,185.00,Chhattisgarh,Bilaspur,Masturi,22.0796,82.1391,Awarded,NHAI CG Zone
+NIT-CG-003,Jagdalpur Bastar Road Tribal Connectivity,Road,48.60,Chhattisgarh,Bastar,Jagdalpur,19.0748,82.0144,Active,CG Rural Road Dev Agency
+NIT-JK-001,Jammu Ring Road Phase-3 Bhalwal,Road,325.00,Jammu & Kashmir,Jammu,Bhalwal,32.7266,74.8570,Active,JKRIDL
+NIT-JK-002,Srinagar Smart City Flood Drain Upgrade,Water,145.00,Jammu & Kashmir,Srinagar,Lal Chowk,34.0837,74.7973,Active,Smart City Srinagar Ltd
+NIT-JK-003,Anantnag-Pahalgam Tourism Road Widening,Road,88.40,Jammu & Kashmir,Anantnag,Pahalgam,34.0151,75.3147,Active,JKPWD
+NIT-GA-001,Panaji Zuari Bridge New Span Construction,Bridge,285.00,Goa,North Goa,Panaji,15.4909,73.8278,Active,PWD Goa
+NIT-GA-002,Margao Smart City Road & Parking,Road,48.60,Goa,South Goa,Margao,15.2832,73.9862,Active,Smart City Margao

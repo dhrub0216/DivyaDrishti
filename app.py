@@ -1,651 +1,471 @@
 """
-Geo-Spatial Public Expenditure & Tender Tracker
-Focus: Samastipur District, Bihar, India
+National Geo-Spatial Public Expenditure & Tender Tracker  v2.0
+Pan-India | Hierarchical Drill-Down: National → State → District → Block
 """
 
-import json
-import subprocess
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from pathlib import Path
+
+from pipeline import (
+    load_production_pipeline_data,
+    get_hierarchy,
+    get_view_config,
+    STATE_CENTERS,
+    INDIA_CENTER,
+    INDIA_ZOOM,
+)
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Samastipur Tender Tracker",
-    page_icon="🗺️",
+    page_title="India Tender Tracker",
+    page_icon="🇮🇳",
     layout="wide",
 )
 
 # ─────────────────────────────────────────────
-# MOCK DATA
-# ─────────────────────────────────────────────
-def load_mock_tender_data() -> pd.DataFrame:
-    """Returns a realistic mock dataset of 20 government tenders for Samastipur district."""
-    records = [
-        # Roads
-        {
-            "tender_id": "NIT-01/RWD/SAMAS/2026",
-            "title": "Construction of Road from Kalyanpur to Warisnagar",
-            "category": "Road",
-            "allocated_amount": 3.45,
-            "location_raw": "Kalyanpur, Samastipur",
-            "latitude": 25.8900,
-            "longitude": 85.7600,
-            "department": "Rural Works Department (RWD)",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-02/RWD/SAMAS/2026",
-            "title": "Widening of SH-56 through Rosera Town",
-            "category": "Road",
-            "allocated_amount": 5.20,
-            "location_raw": "Rosera, Samastipur",
-            "latitude": 25.9700,
-            "longitude": 85.9900,
-            "department": "State Highway Division",
-            "status": "Awarded",
-        },
-        {
-            "tender_id": "NIT-03/RWD/SAMAS/2026",
-            "title": "Rural Road Connectivity – Patori to Ujiyarpur",
-            "category": "Road",
-            "allocated_amount": 2.10,
-            "location_raw": "Patori, Samastipur",
-            "latitude": 25.9200,
-            "longitude": 85.8700,
-            "department": "Rural Works Department (RWD)",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-04/NH/SAMAS/2026",
-            "title": "NH-28 Service Road Construction near Dalsinghsarai",
-            "category": "Road",
-            "allocated_amount": 8.75,
-            "location_raw": "Dalsinghsarai, Samastipur",
-            "latitude": 25.6700,
-            "longitude": 85.8300,
-            "department": "National Highway Authority",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-05/RWD/SAMAS/2026",
-            "title": "Bituminous Resurfacing of Road: Tajpur-Hasanpur Stretch",
-            "category": "Road",
-            "allocated_amount": 1.85,
-            "location_raw": "Tajpur, Samastipur",
-            "latitude": 25.8200,
-            "longitude": 85.7000,
-            "department": "Rural Works Department (RWD)",
-            "status": "Completed",
-        },
-        {
-            "tender_id": "NIT-06/RWD/SAMAS/2025",
-            "title": "Village Road: Mohanpur to Bibhutipur",
-            "category": "Road",
-            "allocated_amount": 0.95,
-            "location_raw": "Bibhutipur, Samastipur",
-            "latitude": 25.8000,
-            "longitude": 85.6500,
-            "department": "Rural Works Department (RWD)",
-            "status": "Completed",
-        },
-        # Bridges
-        {
-            "tender_id": "NIT-07/BR/SAMAS/2026",
-            "title": "Construction of Minor Bridge over Budhi Gandak at Warisnagar",
-            "category": "Bridge",
-            "allocated_amount": 6.80,
-            "location_raw": "Warisnagar, Samastipur",
-            "latitude": 25.8500,
-            "longitude": 85.9100,
-            "department": "Bihar Bridge Construction Corporation",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-08/BR/SAMAS/2026",
-            "title": "High-Level Bridge over Bagmati River near Rosera",
-            "category": "Bridge",
-            "allocated_amount": 14.30,
-            "location_raw": "Rosera, Samastipur",
-            "latitude": 25.9800,
-            "longitude": 85.9700,
-            "department": "Bihar Bridge Construction Corporation",
-            "status": "Awarded",
-        },
-        {
-            "tender_id": "NIT-09/BR/SAMAS/2026",
-            "title": "Repair & Rehabilitation of Existing Bridge, Singhia Block",
-            "category": "Bridge",
-            "allocated_amount": 2.60,
-            "location_raw": "Singhia, Samastipur",
-            "latitude": 25.9000,
-            "longitude": 85.6800,
-            "department": "State Road Construction Department",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-10/BR/SAMAS/2025",
-            "title": "Small Bridge over Drain – Morwa Block",
-            "category": "Bridge",
-            "allocated_amount": 1.20,
-            "location_raw": "Morwa, Samastipur",
-            "latitude": 25.7500,
-            "longitude": 85.8900,
-            "department": "Rural Works Department (RWD)",
-            "status": "Completed",
-        },
-        # Water / Drainage
-        {
-            "tender_id": "NIT-11/WR/SAMAS/2026",
-            "title": "Drinking Water Supply Scheme – Kalyanpur Block",
-            "category": "Water",
-            "allocated_amount": 3.90,
-            "location_raw": "Kalyanpur, Samastipur",
-            "latitude": 25.8800,
-            "longitude": 85.7400,
-            "department": "Public Health Engineering Dept (PHED)",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-12/WR/SAMAS/2026",
-            "title": "Urban Water Distribution Network, Samastipur Town",
-            "category": "Water",
-            "allocated_amount": 9.50,
-            "location_raw": "Samastipur, Bihar",
-            "latitude": 25.8624,
-            "longitude": 85.7810,
-            "department": "Public Health Engineering Dept (PHED)",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-13/WR/SAMAS/2025",
-            "title": "Flood Drainage Canal – Patori to Shivajinagar",
-            "category": "Water",
-            "allocated_amount": 4.15,
-            "location_raw": "Patori, Samastipur",
-            "latitude": 25.9300,
-            "longitude": 85.8600,
-            "department": "Water Resources Department",
-            "status": "Awarded",
-        },
-        {
-            "tender_id": "NIT-14/WR/SAMAS/2025",
-            "title": "Hand Pump Installation Drive – Bibhutipur Block",
-            "category": "Water",
-            "allocated_amount": 0.75,
-            "location_raw": "Bibhutipur, Samastipur",
-            "latitude": 25.8100,
-            "longitude": 85.6600,
-            "department": "Public Health Engineering Dept (PHED)",
-            "status": "Completed",
-        },
-        # Buildings
-        {
-            "tender_id": "NIT-15/BD/SAMAS/2026",
-            "title": "Construction of Community Health Centre – Dalsinghsarai",
-            "category": "Building",
-            "allocated_amount": 7.20,
-            "location_raw": "Dalsinghsarai, Samastipur",
-            "latitude": 25.6600,
-            "longitude": 85.8400,
-            "department": "Health & Family Welfare Dept",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-16/BD/SAMAS/2026",
-            "title": "New Primary School Building – Singhia Block",
-            "category": "Building",
-            "allocated_amount": 1.60,
-            "location_raw": "Singhia, Samastipur",
-            "latitude": 25.9100,
-            "longitude": 85.6900,
-            "department": "Education Department, Bihar",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-17/BD/SAMAS/2025",
-            "title": "Block Development Office Renovation – Tajpur",
-            "category": "Building",
-            "allocated_amount": 0.85,
-            "location_raw": "Tajpur, Samastipur",
-            "latitude": 25.8300,
-            "longitude": 85.7100,
-            "department": "General Administration Dept",
-            "status": "Completed",
-        },
-        {
-            "tender_id": "NIT-18/BD/SAMAS/2026",
-            "title": "Anganwadi Centre Construction – Morwa & Ujiyarpur Blocks",
-            "category": "Building",
-            "allocated_amount": 2.30,
-            "location_raw": "Ujiyarpur, Samastipur",
-            "latitude": 25.8750,
-            "longitude": 85.9300,
-            "department": "Integrated Child Development Services",
-            "status": "Awarded",
-        },
-        {
-            "tender_id": "NIT-19/BD/SAMAS/2026",
-            "title": "Police Station Complex – Warisnagar",
-            "category": "Building",
-            "allocated_amount": 4.40,
-            "location_raw": "Warisnagar, Samastipur",
-            "latitude": 25.8550,
-            "longitude": 85.9050,
-            "department": "Home Department, Bihar",
-            "status": "Active",
-        },
-        {
-            "tender_id": "NIT-20/RWD/SAMAS/2026",
-            "title": "Solar Street Lighting – Samastipur Urban & Rural Areas",
-            "category": "Building",
-            "allocated_amount": 3.10,
-            "location_raw": "Samastipur, Bihar",
-            "latitude": 25.8624,
-            "longitude": 85.7810,
-            "department": "Energy Department, Bihar",
-            "status": "Active",
-        },
-    ]
-    return pd.DataFrame(records)
-
-
-# ─────────────────────────────────────────────
-# STYLING CONSTANTS
+# CONSTANTS
 # ─────────────────────────────────────────────
 CATEGORY_COLORS = {
-    "Road":     "#E74C3C",   # Red
-    "Bridge":   "#3498DB",   # Blue
-    "Water":    "#27AE60",   # Green
-    "Building": "#F39C12",   # Amber
+    "Road":     "#E74C3C",
+    "Bridge":   "#3498DB",
+    "Water":    "#27AE60",
+    "Building": "#F39C12",
+    "Other":    "#9B59B6",
 }
 
-STATUS_SYMBOLS = {
-    "Active":    "🟢",
-    "Awarded":   "🟡",
-    "Completed": "✅",
+STATUS_COLORS = {
+    "Active":    "#27AE60",
+    "Awarded":   "#F39C12",
+    "Completed": "#3498DB",
 }
 
+ALL_STATES    = "All States"
+ALL_DISTRICTS = "All Districts"
+ALL_BLOCKS    = "All Blocks"
 
 # ─────────────────────────────────────────────
-# CUSTOM CSS
+# CSS
 # ─────────────────────────────────────────────
-st.markdown(
-    """
-    <style>
-        .main-title  { font-size:2rem; font-weight:700; color:#1A1A2E; }
-        .sub-title   { font-size:1rem; color:#555; margin-top:-10px; }
-        .kpi-label   { font-size:0.75rem; color:#888; text-transform:uppercase; }
-        .stMetric    { background:#F7F9FC; border-radius:10px; padding:10px; }
-        div[data-testid="metric-container"] { border-left: 4px solid #3498DB; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
+st.markdown("""
+<style>
+    .hero-title  { font-size:1.9rem; font-weight:700; color:#0D1B2A; margin-bottom:2px; }
+    .hero-sub    { font-size:.95rem; color:#666; margin-top:0; }
+    .level-badge {
+        display:inline-block; padding:3px 10px; border-radius:12px;
+        font-size:.75rem; font-weight:600; margin-bottom:8px;
+        background:#EBF5FB; color:#1A5276;
+    }
+    div[data-testid="metric-container"] { border-left:4px solid #3498DB; border-radius:6px; }
+</style>
+""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# LOAD DATA  (live → cached JSON → mock fallback)
+# DATA LOAD
 # ─────────────────────────────────────────────
-
-TENDERS_JSON = Path(__file__).parent / "tenders.json"
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def load_data() -> pd.DataFrame:
-    """
-    Priority:
-      1. tenders.json  (written by scraper.py — real portal data)
-      2. load_mock_tender_data() (built-in fallback)
-    """
-    if TENDERS_JSON.exists():
-        try:
-            records = json.loads(TENDERS_JSON.read_text(encoding="utf-8"))
-            if records:
-                df = pd.DataFrame(records)
-                # Ensure required columns exist
-                for col in ["latitude", "longitude"]:
-                    if col not in df.columns:
-                        df[col] = None
-                df["latitude"]  = pd.to_numeric(df["latitude"],  errors="coerce")
-                df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
-                df["allocated_amount"] = pd.to_numeric(
-                    df["allocated_amount"], errors="coerce"
-                ).fillna(0.0)
-                return df
-        except (json.JSONDecodeError, KeyError):
-            pass
-    return load_mock_tender_data()
+    return load_production_pipeline_data()
 
+with st.spinner("Loading national tender database…"):
+    try:
+        df_master = load_data()
+    except FileNotFoundError as e:
+        st.error(f"**Data not found.** {e}")
+        st.stop()
 
-df_raw = load_data()
-
-# Data source indicator shown in sidebar
-_data_source = "📡 Live (tenders.json)" if TENDERS_JSON.exists() else "🧪 Mock / Demo Data"
-
+hierarchy = get_hierarchy(df_master)
 
 # ─────────────────────────────────────────────
-# SIDEBAR FILTERS
+# SIDEBAR — Cascading Filters
 # ─────────────────────────────────────────────
 with st.sidebar:
-    st.image(
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Emblem_of_Bihar.svg/200px-Emblem_of_Bihar.svg.png",
-        width=80,
-    )
-    st.title("🔍 Filter Tenders")
+    st.markdown("## 🇮🇳 India Tender Tracker")
     st.markdown("---")
 
-    # Category multi-select
-    all_categories = sorted(df_raw["category"].unique().tolist())
-    selected_categories = st.multiselect(
-        "Infrastructure Category",
-        options=all_categories,
-        default=all_categories,
-        help="Select one or more project types to display on the map.",
-    )
+    # ── Level 1: State ──
+    st.markdown("#### 📍 Drill-Down Filters")
+    state_options = [ALL_STATES] + sorted(hierarchy.keys())
+    selected_state = st.selectbox("State / UT", state_options, index=0)
 
-    # Status filter
-    all_statuses = sorted(df_raw["status"].unique().tolist())
-    selected_statuses = st.multiselect(
-        "Project Status",
-        options=all_statuses,
-        default=all_statuses,
-    )
+    # ── Level 2: District (cascades from state) ──
+    if selected_state != ALL_STATES:
+        district_options = [ALL_DISTRICTS] + sorted(hierarchy[selected_state].keys())
+    else:
+        district_options = [ALL_DISTRICTS]
+    selected_district = st.selectbox("District", district_options, index=0)
 
-    # Budget range slider
-    min_amt = float(df_raw["allocated_amount"].min())
-    max_amt = float(df_raw["allocated_amount"].max())
+    # ── Level 3: Block (cascades from district) ──
+    if selected_state != ALL_STATES and selected_district != ALL_DISTRICTS:
+        block_options = [ALL_BLOCKS] + sorted(hierarchy[selected_state][selected_district])
+    else:
+        block_options = [ALL_BLOCKS]
+    selected_block = st.selectbox("Block / Taluka", block_options, index=0)
+
+    st.markdown("---")
+
+    # ── Category filter ──
+    all_cats = sorted(df_master["category"].unique().tolist())
+    selected_cats = st.multiselect("Category", all_cats, default=all_cats)
+
+    # ── Status filter ──
+    all_statuses = sorted(df_master["status"].unique().tolist())
+    selected_statuses = st.multiselect("Status", all_statuses, default=all_statuses)
+
+    # ── Budget slider ──
+    amt_min = float(df_master["allocated_amount"].min())
+    amt_max = float(df_master["allocated_amount"].max())
     budget_range = st.slider(
         "Budget Range (₹ Crores)",
-        min_value=min_amt,
-        max_value=max_amt,
-        value=(min_amt, max_amt),
-        step=0.10,
-        format="₹%.2f Cr",
+        min_value=amt_min, max_value=amt_max,
+        value=(amt_min, amt_max), step=1.0,
+        format="₹%.0f Cr",
     )
 
     st.markdown("---")
-    st.caption(f"Data: {_data_source}")
-    st.caption("© 2026 Transparency Initiative, Samastipur")
+    if st.button("🔄 Refresh Data Cache", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
-    st.markdown("---")
-    st.markdown("#### 🔄 Refresh Live Data")
-    st.caption("Scrapes Bihar portal + CPPP, then geocodes new locations.")
-
-    run_mock = st.checkbox("Use mock data (offline mode)", value=not TENDERS_JSON.exists())
-
-    if st.button("▶ Run Scraper Pipeline", type="primary", use_container_width=True):
-        cmd = ["python3", str(Path(__file__).parent / "scraper.py")]
-        if run_mock:
-            cmd.append("--mock")
-        with st.spinner("Running scraper… (this may take 1–2 minutes)"):
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        if result.returncode == 0:
-            st.success("✅ Pipeline complete — reloading data")
-            st.cache_data.clear()
-            st.rerun()
-        else:
-            st.error("Pipeline failed. See logs below.")
-            st.code(result.stderr[-2000:] if result.stderr else result.stdout[-2000:])
-
+    st.caption(f"Total records in DB: **{len(df_master):,}**")
+    st.caption("Source: CPPP + State Portals + Seed Dataset")
 
 # ─────────────────────────────────────────────
-# APPLY FILTERS
+# DETERMINE DRILL-DOWN LEVEL
 # ─────────────────────────────────────────────
-df = df_raw[
-    df_raw["category"].isin(selected_categories)
-    & df_raw["status"].isin(selected_statuses)
-    & df_raw["allocated_amount"].between(budget_range[0], budget_range[1])
-].copy()
+if selected_state == ALL_STATES:
+    drill_level = "national"
+    level_label = "🌏 National View — All States"
+elif selected_district == ALL_DISTRICTS:
+    drill_level = "state"
+    level_label = f"📍 State View — {selected_state}"
+elif selected_block == ALL_BLOCKS:
+    drill_level = "district"
+    level_label = f"🏙️ District View — {selected_district}, {selected_state}"
+else:
+    drill_level = "block"
+    level_label = f"🔍 Block View — {selected_block}, {selected_district}"
 
+# ─────────────────────────────────────────────
+# FILTER DATA
+# ─────────────────────────────────────────────
+df = df_master.copy()
+
+if selected_state != ALL_STATES:
+    df = df[df["state"] == selected_state]
+if selected_district != ALL_DISTRICTS:
+    df = df[df["district"] == selected_district]
+if selected_block != ALL_BLOCKS:
+    df = df[df["block"] == selected_block]
+
+df = df[
+    df["category"].isin(selected_cats) &
+    df["status"].isin(selected_statuses) &
+    df["allocated_amount"].between(budget_range[0], budget_range[1])
+]
 
 # ─────────────────────────────────────────────
 # PAGE HEADER
 # ─────────────────────────────────────────────
-st.markdown(
-    '<p class="main-title">🗺️ Samastipur Public Expenditure & Tender Tracker</p>',
-    unsafe_allow_html=True,
-)
-st.markdown(
-    '<p class="sub-title">Real-time visibility into government infrastructure spending — Samastipur District, Bihar</p>',
-    unsafe_allow_html=True,
-)
+st.markdown('<p class="hero-title">🗺️ National Public Expenditure & Tender Tracker</p>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Real-time transparency dashboard for government infrastructure spending across India</p>', unsafe_allow_html=True)
+st.markdown(f'<span class="level-badge">{level_label}</span>', unsafe_allow_html=True)
 st.markdown("---")
 
-
 # ─────────────────────────────────────────────
-# KPI METRICS
+# EMPTY STATE GUARD
 # ─────────────────────────────────────────────
 if df.empty:
-    st.warning("⚠️ No tenders match the selected filters. Please adjust your criteria in the sidebar.")
+    st.warning("⚠️ No tenders match the current filters. Please adjust your selections.")
     st.stop()
 
-total_funds   = df["allocated_amount"].sum()
-active_count  = df[df["status"] == "Active"].shape[0]
-avg_cost      = df["allocated_amount"].mean()
-top_project   = df.loc[df["allocated_amount"].idxmax()]
+# ─────────────────────────────────────────────
+# KPI CARDS  (dynamically recalculate at every level)
+# ─────────────────────────────────────────────
+total_funds  = df["allocated_amount"].sum()
+active_count = df[df["status"] == "Active"].shape[0]
+avg_cost     = df["allocated_amount"].mean()
+top_row      = df.loc[df["allocated_amount"].idxmax()]
+state_count  = df["state"].nunique()
 
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.metric(
-        label="💰 Total Funds Tracked",
-        value=f"₹{total_funds:.2f} Cr",
-        help="Sum of all filtered tender allocations",
-    )
-with col2:
-    st.metric(
-        label="📋 Active Projects",
-        value=f"{active_count}",
-        help="Count of tenders currently in 'Active' status",
-    )
-with col3:
-    st.metric(
-        label="📊 Avg Cost / Project",
-        value=f"₹{avg_cost:.2f} Cr",
-        help="Mean allocation across all filtered tenders",
-    )
-with col4:
-    st.metric(
-        label="🏆 Highest Funded",
-        value=f"₹{top_project['allocated_amount']:.2f} Cr",
-        delta=top_project["title"][:35] + "…",
-        delta_color="off",
-        help="Single largest tender in current filter",
-    )
-
+c1, c2, c3, c4, c5 = st.columns(5)
+c1.metric("💰 Total Funds", f"₹{total_funds:,.2f} Cr")
+c2.metric("📋 Active Projects", f"{active_count:,}")
+c3.metric("📊 Avg per Project", f"₹{avg_cost:,.2f} Cr")
+c4.metric("🏆 Largest Tender", f"₹{top_row['allocated_amount']:,.2f} Cr",
+          delta=top_row["title"][:30] + "…", delta_color="off")
+c5.metric("🗺️ States Covered", f"{state_count}")
 st.markdown("---")
 
-
 # ─────────────────────────────────────────────
-# PREPARE MAP DATA
+# MAP VISUALIZATION — Adaptive by drill level
 # ─────────────────────────────────────────────
+view = get_view_config(df, selected_state, selected_district)
 
-# Build a formatted hover label column
-df["amount_fmt"]  = df["allocated_amount"].apply(lambda x: f"₹{x:.2f} Crores")
-df["status_icon"] = df["status"].map(STATUS_SYMBOLS)
-df["hover_label"] = (
-    "<b>" + df["title"] + "</b><br>"
-    + "🏢 " + df["department"] + "<br>"
-    + "💰 " + df["amount_fmt"] + "<br>"
-    + "📌 " + df["status_icon"] + " " + df["status"]
-)
-
-# Scale bubble size — min 10, max 50 proportional to amount
-size_min, size_max = 10, 50
-amt_min = df["allocated_amount"].min()
-amt_max = df["allocated_amount"].max()
-if amt_max > amt_min:
-    df["bubble_size"] = (
-        (df["allocated_amount"] - amt_min) / (amt_max - amt_min)
-        * (size_max - size_min)
-        + size_min
-    )
-else:
-    df["bubble_size"] = (size_min + size_max) / 2
-
-
-# ─────────────────────────────────────────────
-# INTERACTIVE MAP
-# ─────────────────────────────────────────────
-map_col, legend_col = st.columns([4, 1])
+map_col, info_col = st.columns([4, 1])
 
 with map_col:
-    fig = px.scatter_mapbox(
-        df,
-        lat="latitude",
-        lon="longitude",
-        size="bubble_size",
-        color="category",
-        color_discrete_map=CATEGORY_COLORS,
-        hover_name="title",
-        hover_data={
-            "department":        True,
-            "amount_fmt":        True,
-            "status":            True,
-            "bubble_size":       False,   # hide raw size value
-            "latitude":          False,
-            "longitude":         False,
-        },
-        labels={
-            "amount_fmt":  "Allocated",
-            "department":  "Department",
-            "status":      "Status",
-            "category":    "Category",
-        },
-        mapbox_style="open-street-map",
-        center={"lat": 25.86, "lon": 85.78},
-        zoom=9,
-        height=540,
-        title="",
-    )
 
-    fig.update_traces(
-        marker=dict(opacity=0.80, sizemode="area"),
-        hovertemplate=(
-            "<b>%{hovertext}</b><br>"
-            "🏢 %{customdata[0]}<br>"
-            "💰 %{customdata[1]}<br>"
-            "📌 %{customdata[2]}<extra></extra>"
-        ),
-    )
+    # ── NATIONAL VIEW: aggregate by state, bubble per state ──────────────
+    if drill_level == "national":
+        state_agg = (
+            df.groupby("state")
+            .agg(
+                total_amount=("allocated_amount", "sum"),
+                count=("tender_id", "count"),
+                lat=("latitude", "mean"),
+                lon=("longitude", "mean"),
+            )
+            .reset_index()
+        )
+        # Use state centres when available (more accurate than data mean)
+        state_agg["lat"] = state_agg["state"].map(
+            lambda s: STATE_CENTERS.get(s, {}).get("lat", state_agg.loc[state_agg["state"] == s, "lat"].values[0])
+        )
+        state_agg["lon"] = state_agg["state"].map(
+            lambda s: STATE_CENTERS.get(s, {}).get("lon", state_agg.loc[state_agg["state"] == s, "lon"].values[0])
+        )
+        state_agg["label"] = state_agg.apply(
+            lambda r: f"{r['state']}<br>₹{r['total_amount']:,.1f} Cr | {r['count']} tenders", axis=1
+        )
+
+        fig = px.scatter_mapbox(
+            state_agg,
+            lat="lat", lon="lon",
+            size="total_amount",
+            color="total_amount",
+            color_continuous_scale="YlOrRd",
+            hover_name="state",
+            hover_data={"total_amount": ":.2f", "count": True, "lat": False, "lon": False},
+            labels={"total_amount": "₹ Crores", "count": "Tenders"},
+            mapbox_style="open-street-map",
+            center={"lat": INDIA_CENTER["lat"], "lon": INDIA_CENTER["lon"]},
+            zoom=INDIA_ZOOM,
+            height=560,
+            size_max=60,
+        )
+        fig.update_coloraxes(colorbar_title="₹ Crores")
+
+    # ── STATE VIEW: aggregate by district ────────────────────────────────
+    elif drill_level == "state":
+        dist_agg = (
+            df.groupby("district")
+            .agg(
+                total_amount=("allocated_amount", "sum"),
+                count=("tender_id", "count"),
+                lat=("latitude", "mean"),
+                lon=("longitude", "mean"),
+            )
+            .reset_index()
+        )
+        dist_agg["size_col"] = dist_agg["total_amount"].clip(lower=1)
+
+        fig = px.scatter_mapbox(
+            dist_agg,
+            lat="lat", lon="lon",
+            size="size_col",
+            color="total_amount",
+            color_continuous_scale="Blues",
+            hover_name="district",
+            hover_data={"total_amount": ":.2f", "count": True, "lat": False, "lon": False, "size_col": False},
+            labels={"total_amount": "₹ Crores", "count": "Tenders"},
+            mapbox_style="open-street-map",
+            center={"lat": view["lat"], "lon": view["lon"]},
+            zoom=view["zoom"],
+            height=560,
+            size_max=55,
+        )
+
+    # ── DISTRICT / BLOCK VIEW: individual scatter points ─────────────────
+    else:
+        # Scale bubble size min-max proportional to amount
+        a_min, a_max = df["allocated_amount"].min(), df["allocated_amount"].max()
+        df = df.copy()
+        df["bubble"] = (
+            ((df["allocated_amount"] - a_min) / (a_max - a_min + 1e-9)) * 40 + 10
+        )
+        df["amt_fmt"] = df["allocated_amount"].apply(lambda x: f"₹{x:,.2f} Crores")
+
+        fig = px.scatter_mapbox(
+            df,
+            lat="latitude", lon="longitude",
+            size="bubble",
+            color="category",
+            color_discrete_map=CATEGORY_COLORS,
+            hover_name="title",
+            hover_data={
+                "department": True,
+                "amt_fmt": True,
+                "status": True,
+                "state": True,
+                "district": True,
+                "block": True,
+                "bubble": False,
+                "latitude": False,
+                "longitude": False,
+            },
+            labels={"amt_fmt": "Allocated", "department": "Dept", "status": "Status"},
+            mapbox_style="open-street-map",
+            center={"lat": view["lat"], "lon": view["lon"]},
+            zoom=view["zoom"],
+            height=560,
+        )
+        fig.update_traces(
+            marker=dict(opacity=0.85, sizemode="area"),
+        )
 
     fig.update_layout(
-        margin=dict(l=0, r=0, t=10, b=0),
-        legend=dict(
-            title="Category",
-            orientation="h",
-            yanchor="bottom",
-            y=1.01,
-            xanchor="right",
-            x=1,
-        ),
+        margin=dict(l=0, r=0, t=5, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
     )
-
     st.plotly_chart(fig, use_container_width=True)
 
-with legend_col:
-    st.markdown("#### 📌 Legend")
-    st.markdown("**By Category**")
-    for cat, color in CATEGORY_COLORS.items():
+with info_col:
+    st.markdown("#### 🔍 Current View")
+    st.markdown(f"**Level:** {drill_level.capitalize()}")
+    st.markdown(f"**Tenders shown:** `{len(df):,}`")
+    st.markdown("---")
+
+    if drill_level in ("district", "block"):
+        st.markdown("**By Category**")
+        for cat, color in CATEGORY_COLORS.items():
+            count = (df["category"] == cat).sum()
+            if count:
+                st.markdown(
+                    f'<span style="background:{color};border-radius:50%;display:inline-block;'
+                    f'width:10px;height:10px;margin-right:5px;"></span> {cat} ({count})',
+                    unsafe_allow_html=True,
+                )
+    else:
+        # Show top states or districts in current view
+        group_col = "state" if drill_level == "national" else "district"
+        top5 = (
+            df.groupby(group_col)["allocated_amount"]
+            .sum().sort_values(ascending=False).head(5)
+        )
+        st.markdown(f"**Top {group_col.capitalize()}s**")
+        for name, amt in top5.items():
+            st.caption(f"{name[:20]}: ₹{amt:,.1f} Cr")
+
+    st.markdown("---")
+    st.markdown("**Status**")
+    for status, color in STATUS_COLORS.items():
+        cnt = (df["status"] == status).sum()
         st.markdown(
-            f'<span style="background:{color};border-radius:50%;display:inline-block;'
-            f'width:12px;height:12px;margin-right:6px;"></span> {cat}',
+            f'<span style="color:{color};font-weight:600;">●</span> {status}: {cnt}',
             unsafe_allow_html=True,
         )
-    st.markdown("---")
-    st.markdown("**By Status**")
-    for status, icon in STATUS_SYMBOLS.items():
-        st.markdown(f"{icon} {status}")
-    st.markdown("---")
-    st.markdown("**Bubble Size**")
-    st.caption("Larger bubble = Higher budget allocation")
-    st.markdown("---")
-    st.markdown(f"**Showing**")
-    st.markdown(f"`{len(df)}` of `{len(df_raw)}` tenders")
-
 
 # ─────────────────────────────────────────────
-# DATA TABLE
+# ANALYTICS CHARTS
 # ─────────────────────────────────────────────
 st.markdown("---")
-st.subheader("📄 Filtered Tender Details")
+ch1, ch2, ch3 = st.columns(3)
 
-display_cols = {
+with ch1:
+    st.subheader("💹 Funds by Category")
+    cat_df = (
+        df.groupby("category")["allocated_amount"]
+        .sum().reset_index()
+        .rename(columns={"allocated_amount": "₹ Crores"})
+        .sort_values("₹ Crores", ascending=False)
+    )
+    fig_bar = px.bar(
+        cat_df, x="category", y="₹ Crores",
+        color="category", color_discrete_map=CATEGORY_COLORS,
+        text_auto=".1f",
+    )
+    fig_bar.update_layout(showlegend=False, margin=dict(t=10, b=10))
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+with ch2:
+    st.subheader("📊 Status Split")
+    stat_df = df["status"].value_counts().reset_index()
+    stat_df.columns = ["Status", "Count"]
+    fig_pie = px.pie(
+        stat_df, names="Status", values="Count",
+        color="Status", color_discrete_map=STATUS_COLORS,
+        hole=0.45,
+    )
+    fig_pie.update_traces(textposition="outside", textinfo="percent+label")
+    fig_pie.update_layout(margin=dict(t=10, b=10), showlegend=False)
+    st.plotly_chart(fig_pie, use_container_width=True)
+
+with ch3:
+    # Varies by drill level — top aggregation
+    if drill_level == "national":
+        group_label = "State"
+        top_df = (
+            df.groupby("state")["allocated_amount"]
+            .sum().nlargest(8).reset_index()
+            .rename(columns={"state": "State", "allocated_amount": "₹ Crores"})
+        )
+        st.subheader("🏅 Top States by Spend")
+        fig_top = px.bar(
+            top_df, x="₹ Crores", y="State",
+            orientation="h", text_auto=".0f",
+            color="₹ Crores", color_continuous_scale="YlOrRd",
+        )
+    elif drill_level == "state":
+        top_df = (
+            df.groupby("district")["allocated_amount"]
+            .sum().nlargest(8).reset_index()
+            .rename(columns={"district": "District", "allocated_amount": "₹ Crores"})
+        )
+        st.subheader(f"🏅 Top Districts — {selected_state}")
+        fig_top = px.bar(
+            top_df, x="₹ Crores", y="District",
+            orientation="h", text_auto=".0f",
+            color="₹ Crores", color_continuous_scale="Blues",
+        )
+    else:
+        top_df = (
+            df.nlargest(8, "allocated_amount")[["title", "allocated_amount"]]
+            .rename(columns={"title": "Project", "allocated_amount": "₹ Crores"})
+        )
+        top_df["Project"] = top_df["Project"].str[:30]
+        st.subheader("🏅 Top Tenders")
+        fig_top = px.bar(
+            top_df, x="₹ Crores", y="Project",
+            orientation="h", text_auto=".1f",
+            color="₹ Crores", color_continuous_scale="Greens",
+        )
+
+    fig_top.update_layout(
+        showlegend=False, coloraxis_showscale=False,
+        margin=dict(t=10, b=10), yaxis=dict(autorange="reversed"),
+    )
+    st.plotly_chart(fig_top, use_container_width=True)
+
+# ─────────────────────────────────────────────
+# SEARCHABLE DATA TABLE
+# ─────────────────────────────────────────────
+st.markdown("---")
+st.subheader("📄 Tender Details")
+
+show_cols = {
     "tender_id":        "Tender ID",
     "title":            "Project Title",
     "category":         "Category",
     "allocated_amount": "Amount (₹ Cr)",
-    "location_raw":     "Location",
+    "state":            "State",
+    "district":         "District",
+    "block":            "Block",
     "status":           "Status",
     "department":       "Department",
 }
 
-df_display = df[list(display_cols.keys())].rename(columns=display_cols).copy()
-df_display["Amount (₹ Cr)"] = df_display["Amount (₹ Cr)"].apply(lambda x: f"₹{x:.2f} Cr")
+df_table = df[list(show_cols.keys())].rename(columns=show_cols).copy()
+df_table["Amount (₹ Cr)"] = df_table["Amount (₹ Cr)"].apply(lambda x: f"₹{x:,.2f}")
 
-st.dataframe(
-    df_display,
-    use_container_width=True,
-    height=320,
-    hide_index=True,
-)
+st.dataframe(df_table, use_container_width=True, height=340, hide_index=True)
 
-# Download button
-csv_data = df[list(display_cols.keys())].rename(columns=display_cols).to_csv(index=False)
+csv = df[list(show_cols.keys())].rename(columns=show_cols).to_csv(index=False)
 st.download_button(
-    label="⬇️ Download Filtered Data (CSV)",
-    data=csv_data,
-    file_name="samastipur_tenders_filtered.csv",
+    "⬇️ Download Filtered Data (CSV)",
+    data=csv,
+    file_name=f"india_tenders_{drill_level}.csv",
     mime="text/csv",
 )
-
-
-# ─────────────────────────────────────────────
-# CATEGORY BREAKDOWN CHART
-# ─────────────────────────────────────────────
-st.markdown("---")
-chart_col1, chart_col2 = st.columns(2)
-
-with chart_col1:
-    st.subheader("💹 Funds by Category")
-    cat_summary = (
-        df.groupby("category")["allocated_amount"]
-        .sum()
-        .reset_index()
-        .rename(columns={"allocated_amount": "Total (₹ Cr)"})
-    )
-    bar_fig = px.bar(
-        cat_summary,
-        x="category",
-        y="Total (₹ Cr)",
-        color="category",
-        color_discrete_map=CATEGORY_COLORS,
-        text_auto=".2f",
-        labels={"category": "Category", "Total (₹ Cr)": "₹ Crores"},
-    )
-    bar_fig.update_layout(showlegend=False, margin=dict(t=20, b=20))
-    st.plotly_chart(bar_fig, use_container_width=True)
-
-with chart_col2:
-    st.subheader("📊 Status Distribution")
-    status_summary = df["status"].value_counts().reset_index()
-    status_summary.columns = ["Status", "Count"]
-    pie_fig = px.pie(
-        status_summary,
-        names="Status",
-        values="Count",
-        color="Status",
-        color_discrete_map={
-            "Active":    "#27AE60",
-            "Awarded":   "#F39C12",
-            "Completed": "#3498DB",
-        },
-        hole=0.45,
-    )
-    pie_fig.update_traces(textposition="outside", textinfo="percent+label")
-    pie_fig.update_layout(margin=dict(t=20, b=20), showlegend=True)
-    st.plotly_chart(pie_fig, use_container_width=True)
