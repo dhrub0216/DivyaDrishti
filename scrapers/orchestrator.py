@@ -1,4 +1,30 @@
-"""Pipeline orchestrator — geocoding + scrape pipeline runner."""
+"""
+scrapers/orchestrator.py
+
+Pipeline orchestrator — runs all scraping sources in sequence and persists
+results to the SQLite database (tenders.db).
+
+Available source keys (pass in the `sources` list to run_pipeline):
+  'cppp'        — Central NIC GePNIC portal (all central-government tenders)
+  'states'      — 28 state NIC GePNIC portals
+  'gem'         — Government e-Marketplace Bidplus (cross-sector, nationwide)
+  'datagov'     — data.gov.in Open Government Data (requires API key)
+  'pmgsy'       — PMGSY rural road tenders (CAPTCHA-solved Playwright scraper)
+  'cgstate'     — Chhattisgarh CHEPS portal (Java Struts, Playwright)
+  'biharv2'     — Bihar EPS v2 (JS hash-tab AJAX, Playwright)
+  'up_misc'     — UP custom portals: Jal Nigam, UPEIDA, State Bridge Corp
+  'up_sectors'  — UP sectoral portals: Health, MSME, Social Welfare, IT
+  'up_power'    — UP power distribution: PVVNL, MVVNL
+  'psu_html'    — Central PSU HTML portals: MSEDCL, Chennai Port, BHEL
+  'ongc'        — ONGC Current NITs (Liferay portlet, Playwright)
+  'nhai'        — NHAI tenders (Angular SPA REST API, no browser needed)
+  'coal_india'  — Coal India All Tenders (DataTables, Playwright)
+
+Geocoding runs automatically at the end of every pipeline run:
+  1. District coordinate table (instant, no network)
+  2. Nominatim OSM geocoder (1 req/sec, network required)
+  3. State centre fallback (always available)
+"""
 
 import time
 import sqlite3
@@ -125,6 +151,10 @@ def run_pipeline(
         scrape_upjalNigam, scrape_upeida_archive, scrape_upsbc,
         scrape_etender_up_orgs, scrape_upmsc, scrape_pvvnl, scrape_mvvnl,
     )
+    # JS-rendered PSU portals: ONGC (Liferay), NHAI (REST API), Coal India (DataTables)
+    from scrapers.js_portals import scrape_ongc, scrape_nhai, scrape_coal_india
+    # Static HTML PSU portals: MSEDCL (WordPress), Chennai Port, BHEL
+    from scrapers.central_psu import scrape_all_psu
 
     conn = get_db()
     summary = {}
@@ -234,6 +264,30 @@ def run_pipeline(
         n = upsert(conn, recs)
         summary["MVVNL/UP"] = n
         logger.info("MVVNL/UP: %d records saved", n)
+
+    # 10. Central PSU portals — HTML-rendered (MSEDCL, Chennai Port, BHEL)
+    if "psu_html" in sources:
+        psu_result = scrape_all_psu(conn=conn)
+        summary.update(psu_result)
+
+    # 11. JS-rendered PSU portals — ONGC (Liferay portlet), NHAI (REST API), Coal India (DataTables)
+    if "ongc" in sources:
+        recs = scrape_ongc(conn=conn)
+        n = upsert(conn, recs)
+        summary["ONGC"] = n
+        logger.info("ONGC: %d records saved", n)
+
+    if "nhai" in sources:
+        recs = scrape_nhai(conn=conn)
+        n = upsert(conn, recs)
+        summary["NHAI"] = n
+        logger.info("NHAI: %d records saved", n)
+
+    if "coal_india" in sources:
+        recs = scrape_coal_india(conn=conn)
+        n = upsert(conn, recs)
+        summary["Coal-India"] = n
+        logger.info("Coal India: %d records saved", n)
 
     # Geocode any missing coordinates (fast — district-level only)
     geocode_missing_db(conn)

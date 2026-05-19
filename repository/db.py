@@ -1,4 +1,35 @@
-"""Database access layer — all SQLite operations."""
+"""
+repository/db.py
+
+Database access layer — all SQLite read/write operations go through here.
+
+Database: tenders.db  (SQLite, single file, sits at the project root)
+
+Tables
+──────
+  tenders              — one row per tender (unique on tender_id).
+                         Schema defined in models/tender.py::SCHEMA.
+                         Upserted via INSERT OR REPLACE so re-scraping a
+                         tender overwrites the old row rather than duplicating.
+
+  scraping_health_log  — one row per scraping run, recording source, domain,
+                         status ('ok' / 'failed' / 'blocked'), error details,
+                         and records_fetched count.  Used by the dashboard to
+                         show last-scraped timestamps and failure indicators.
+
+Key functions (module-level wrappers around TenderRepository)
+─────────────────────────────────────────────────────────────
+  get_db()        → sqlite3.Connection  (schema auto-migrated on every open)
+  upsert(conn, records)  → int  (records inserted/replaced)
+  log_health(conn, ...)  → None (one log row per scraping session)
+
+Schema migration
+────────────────
+  When new columns are added to models/tender.py::_MIGRATION_COLUMNS, they are
+  added with ALTER TABLE on every DB open.  This is idempotent — SQLite raises
+  OperationalError if the column already exists, which we silently swallow.
+  This means no migration scripts are needed for additive schema changes.
+"""
 
 import sqlite3
 import logging

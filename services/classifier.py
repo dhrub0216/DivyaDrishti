@@ -1,4 +1,45 @@
-"""Text classification, amount parsing, and record construction helpers."""
+"""
+services/classifier.py
+
+Text-based classification, amount parsing, and geographic extraction helpers.
+Used by every scraper to normalise raw tender text into structured fields.
+
+Key functions
+─────────────
+  classify_sector(title, department)
+      → sector string (e.g. "Infrastructure", "Health")
+      v1 rule: first keyword match wins.
+
+  classify_sector_v2(title, department)
+      → sector string (never "Other"; falls back to "General")
+      v2 rule: score all sectors by keyword count, return highest.
+      Used by reclassify_db() to upgrade "Other" labels after initial scrape.
+
+  extract_state_from_org(org)
+      → state string or "Unknown"
+      Scans org/department text for any known state name (exact substring match).
+
+  parse_amount(text)
+      → float in Crores (INR)
+      Handles "₹ 1,23,456", "Rs 5.2 Crore", "12.5 Lakh" formats.
+
+  make_record(...)
+      → dict compatible with repository.db upsert schema.
+      The "old" factory used by scrapers/nic.py and scrapers/gem.py.
+      Newer scrapers define their own _make_record() for local flexibility.
+
+  reclassify_db(db_path)
+      → counts dict
+      One-time or periodic pass over the whole database to upgrade
+      "Other" sectors and "Unknown" states/districts using v2 classifiers.
+      Called at pipeline end via pipeline.py --reclassify.
+
+Sector priority
+───────────────
+  The _SECTOR_RULES list is checked top-to-bottom; the first matching sector
+  wins.  Order matters: "Infrastructure" > "Health" > "Education" > …
+  "Other" is returned only when no keyword matches.
+"""
 
 import re
 import logging

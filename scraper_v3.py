@@ -57,6 +57,15 @@ from scrapers.states.karnataka import scrape_karnataka
 from scrapers.states.ap_telangana import scrape_ap_telangana
 from scrapers.states.gujarat import scrape_gujarat
 
+# JS-rendered PSU portals (Liferay, Angular SPA, DataTables)
+from scrapers.js_portals import (
+    scrape_ongc, scrape_nhai, scrape_coal_india, scrape_ntpc, scrape_all_js_portals,
+)
+# Static HTML PSU portals
+from scrapers.central_psu import (
+    scrape_msedcl, scrape_chennai_port, scrape_bhel, scrape_aai, scrape_all_psu,
+)
+
 __all__ = [
     # config
     "NIC_PORTALS", "GEM_URL", "DATAGOV_BASE", "PMGSY_URL",
@@ -84,4 +93,8 @@ __all__ = [
     "scrape_pvvnl", "scrape_mvvnl",
     "enrich_up_power_amounts", "enrich_etender_up_amounts", "enrich_upmsc_amounts",
     "scrape_karnataka", "scrape_ap_telangana", "scrape_gujarat",
+    # JS-rendered PSU portals
+    "scrape_ongc", "scrape_nhai", "scrape_coal_india", "scrape_ntpc", "scrape_all_js_portals",
+    # Static HTML PSU portals
+    "scrape_msedcl", "scrape_chennai_port", "scrape_bhel", "scrape_aai", "scrape_all_psu",
 ]
