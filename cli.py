@@ -132,6 +132,15 @@ def main():
     parser.add_argument("--scrape-gujarat", action="store_true",
                         help="Scrape Gujarat nProcure portal (~4k tenders, Playwright XHR).")
 
+    parser.add_argument("--enrich-nic", action="store_true",
+                        help="Visit NIC GePNIC portal detail pages for all 29 state portals "
+                             "and extract Tender Value amounts (internet required, slow).")
+    parser.add_argument("--nic-limit", type=int, default=50,
+                        help="Max tenders to enrich per NIC portal domain per run (default 50).")
+    parser.add_argument("--nic-domains", nargs="+", metavar="DOMAIN",
+                        help="Limit NIC enrichment to specific portal domains "
+                             "(e.g. mptenders.gov.in eproc.rajasthan.gov.in).")
+
     parser.add_argument("--reclassify", action="store_true",
                         help="Re-classify all tenders in the DB using the latest keyword rules "
                              "(offline — no network needed, very fast).")
@@ -140,6 +149,28 @@ def main():
     headless = args.headless.lower() == "true"
 
     # ── Standalone modes — run one specific operation and exit ─────────────────
+
+    # Visit NIC GePNIC portal detail pages to extract Tender Value amounts
+    if args.enrich_nic:
+        from scrapers.enrich_nic import enrich_nic_portal_amounts
+        _conn = sqlite3.connect(DB_PATH)
+        results = enrich_nic_portal_amounts(
+            _conn,
+            limit_per_portal=args.nic_limit,
+            target_domains=args.nic_domains or None,
+        )
+        _conn.close()
+        total_v = sum(s["visited"] for s in results.values())
+        total_u = sum(s["updated"] for s in results.values())
+        print(f"\n{'─'*60}")
+        print(f"  NIC enrichment complete — {total_u:,} updated / {total_v:,} visited")
+        print(f"{'─'*60}")
+        for domain, s in sorted(results.items(), key=lambda x: -x[1]["updated"]):
+            if s["visited"] > 0:
+                pct = s["updated"] / s["visited"] * 100 if s["visited"] else 0
+                print(f"  {domain:<45} updated={s['updated']:>4}  visited={s['visited']:>4}  hit={pct:.0f}%")
+        print()
+        raise SystemExit(0)
 
     # Geocode missing coordinates using Nominatim OSM (slow — 1 req/sec)
     if args.enrich_entities:

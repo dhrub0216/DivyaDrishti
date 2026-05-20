@@ -75,8 +75,12 @@ st.set_page_config(
 # ── Constants ──────────────────────────────────────────────────────────────────
 ALL               = "All"
 SCATTER_LIMIT     = 5_000
-RUPEES_PER_CRORE  = 1_00_00_000   # 10 million — amounts stored in raw rupees
-MIN_VALID_AMOUNT  = 10_000        # below this = year/garbage stored as amount
+RUPEES_PER_CRORE  = 1_00_00_000   # 10 million
+# DB has mixed units: Bihar/CHEPS/Coal India store raw Rupees; enrichers store Crores.
+# Detection rule: >100,000 → raw Rupees; 0.001–2,000 → already Crores; else garbage.
+# Upper limit 2,000 Cr excludes GEM entries where year (2025/2026) was stored as amount.
+RUPEES_THRESHOLD  = 100_000       # amounts above this are raw Rupees
+CRORE_MAX         = 2_000         # amounts in this range are Crores already
 STATUS_COLORS     = {"Active": "#2E7D52", "Awarded": "#C47629", "Completed": "#1A4A7A"}
 
 # Sectors that are unclassified catch-alls — moved to bottom of filter lists
@@ -160,10 +164,18 @@ def get_data() -> pd.DataFrame:
                 "status", "contractor_name", "block", "title"]:
         if col in raw.columns:
             raw[col] = raw[col].astype(str).replace("nan", "")
-    # amounts are stored in raw rupees — add a Crores column for display
-    raw["amount_cr"] = raw["allocated_amount"] / RUPEES_PER_CRORE
-    # mark valid budget (filters out year-as-amount values like 2026, tiny errors)
-    raw["has_budget"] = raw["allocated_amount"] > MIN_VALID_AMOUNT
+    # DB has mixed units — normalise everything to Crores for display
+    def _to_crores(x):
+        if x is None or x != x or x == 0:  return 0.0       # None / NaN / zero
+        x = float(x)
+        if x > RUPEES_THRESHOLD:            return x / RUPEES_PER_CRORE  # raw Rupees
+        if x > 0.001:                       return x          # already in Crores
+        return 0.0                                            # suspiciously tiny
+    raw["amount_cr"]  = raw["allocated_amount"].apply(_to_crores)
+    # has_budget = either raw-Rupee format (>100K) or Crore format (0.001–5000)
+    raw["has_budget"] = (raw["allocated_amount"] > RUPEES_THRESHOLD) | (
+        raw["allocated_amount"].between(0.001, CRORE_MAX, inclusive="both")
+    )
     # normalise sector: merge tiny unclassified groups into "Unclassified"
     raw["sector_display"] = raw["sector"].apply(
         lambda s: "Unclassified" if s in UNCLASSIFIED_SECTORS else s
