@@ -161,9 +161,10 @@ def enrich_nic_portal_amounts(
     portal_domains = {}   # domain → base_url
     for domain, surl in rows:
         if domain and domain not in portal_domains:
-            app_path = _PORTAL_APP_PATH.get(domain, "/nicgep/app")
-            split_at = app_path.split("/")[1]  # e.g. "nicgep" or "eprocure"
-            base = surl.split(f'/{split_at}')[0]
+            # Use the domain directly rather than parsing source_url, which can
+            # break when the domain name contains the same word as the path segment
+            # (e.g. eprocure.gov.in has /eprocure/ in both domain and path).
+            base = f"https://{domain}"
             portal_domains[domain] = base
 
     if target_domains:
