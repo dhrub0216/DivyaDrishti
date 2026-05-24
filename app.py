@@ -81,6 +81,7 @@ RUPEES_PER_CRORE  = 1_00_00_000   # 10 million
 # Upper limit 2,000 Cr excludes GEM entries where year (2025/2026) was stored as amount.
 RUPEES_THRESHOLD  = 100_000       # amounts above this are raw Rupees
 CRORE_MAX         = 2_000         # amounts in this range are Crores already
+MIN_VALID_AMOUNT  = 10_000        # raw Rupees floor; anything below is noise
 STATUS_COLORS     = {"Active": "#2E7D52", "Awarded": "#C47629", "Completed": "#1A4A7A"}
 
 # Sectors that are unclassified catch-alls — moved to bottom of filter lists

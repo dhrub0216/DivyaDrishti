@@ -19,24 +19,35 @@ logger = logging.getLogger(__name__)
 # ── Department-name rules (applied before title keywords) ─────────────────────
 # Maps a regex on department → sector
 DEPT_RULES = [
-    # Energy — electricity boards, power corps, generation companies
+    # Energy — electricity boards, power corps, generation companies, oil & gas
     (r'(DGVCL|PGVCL|GETCO|GSECL|MSEDCL|TNEB|HVPNL|DHBVN|UHBVN|PSPCL|CESC'
      r'|WBSEDCL|BESCOM|MESCOM|HESCOM|KSEB|APEPDCL|TSSPDCL|DISCOM'
      r'|power\s+corp|electricity\s+board|electric\s+supply'
      r'|Haryana.*Board|HPSEBL|JDVVNL|AVVNL|JVVNL|MVVNL|PVVNL'
      r'|JSEB|JBVNL|UPCL\b|MPPTCL|RRVUN|NTPC|PGCIL|NHPC'
      r'|Vidyut\s+Vitran|Vidyut\s+Utpadan|Vidyut\s+Prasaran'
-     r'|Engineers\s+India\s+Lim|MoPNG|petroleum|oil\s+and\s+gas)',
+     r'|Engineers\s+India\s+Lim|MoPNG|petroleum|oil\s+and\s+gas'
+     r'|\bONGC\b|\bGAIL\b|\bBPCL\b|\bHPCL\b|\bIOCL?\b|Indian\s+Oil)',
      'Energy'),
+    # Mining — coal, minerals, quarrying
+    (r'(Coal\s+India|Singareni\s+Collieries|\bSCCL\b|\bNCL\b|\bBCCL\b|\bCCL\b'
+     r'|\bMCL\b|\bSECL\b|\bECL\b|\bWCL\b|Collieries|colliery'
+     r'|\bNMDC\b|Mineral\s+Development|Mines\s+and\s+Geology'
+     r'|Directorate.*Mines|department.*mines|Mining\s+Corp'
+     r'|Kerala\s+Mineral|Mineral\s+Exploration)',
+     'Mining'),
     # Water & Sanitation
     (r'\b(PHED?|PHE\b|GWSSB|CMWSSB|BWSSB|KUWS?|jal\s+nigam|jal\s+board'
      r'|water\s+supply|water\s+works|water\s+board|sanitation'
      r'|NWR|irrigation|minor\s+irrigation|CE-BM|LMB\s+Basin)\b',
      'Water & Sanitation'),
-    # Education
+    # Education — schools, universities, technical institutes
     (r'\b(samagra\s+shiksha|GCSE|shiksha|education\s+dept|vidyalay'
      r'|school\s+education|higher\s+education|university|college\b'
-     r'|ITI\b|polytechnic|DIET\b|SIERT)\b',
+     r'|ITI\b|polytechnic|DIET\b|SIERT'
+     r'|Indian\s+Institute\s+of\s+(Technology|Management|Information|Science)'
+     r'|\bIIT\b|\bIIM\b|\bIISc\b|\bIISER\b|\bNIT\s+\w'
+     r'|National\s+Institute\s+of\s+Technology)\b',
      'Education'),
     # Health
     (r'\b(HFW|civil\s+hospital|district\s+hospital|medical\s+college'
@@ -67,11 +78,23 @@ DEPT_RULES = [
      'Social Welfare'),
     # Environment & Forestry
     (r'(forest\s+dep|forestry|environment\s+dep|ecology|wildlife'
-     r'|pollution\s+control|PCB\b)',
+     r'|pollution\s+control|PCB\b|divisional\s+forest|forest\s+div'
+     r'|van\s+vibhag|vaniki)',
      'Environment & Forestry'),
-    # Infrastructure — roads, buildings, RED (Rural Engineering Dept)
+    # Health — add ESIC, BARC (nuclear research = health/energy but ESIC is health)
+    (r'\b(ESIC\b|employees?\s+state\s+insurance|ESI\s+hosp)',
+     'Health'),
+    # Energy — atomic research, nuclear
+    (r'\b(BARC\b|Bhabha\s+Atomic|Nuclear\s+Power|Atomic\s+Energy|NPCIL\b|DAE\b)',
+     'Energy'),
+    # Agriculture — irrigation command area
+    (r'\bI\s*&?\s*CAD\b|Irrigation\s+and\s+Command|command\s+area\s+dev',
+     'Agriculture'),
+    # Infrastructure — roads, buildings, defence establishments (civil works)
     (r'(R\s*&\s*B\b|PWD\b|NHAI\b|roads?\s+and\s+buildings?|public\s+works'
-     r'|highway|CGRRDA|Chief.*Engineer.*RED\b)',
+     r'|highway|CGRRDA|Chief.*Engineer.*RED\b'
+     r'|Assam\s+Rifles|Border\s+Roads|MES\b|Military\s+Engineer'
+     r'|Defence\s+Research|DRDO\b|Cantonment\s+Board)',
      'Infrastructure'),
     # Transport & Logistics
     (r'\b(transport\s+dept|RSWC|warehouse|warehousing\s+corp|logistics'
@@ -146,7 +169,7 @@ TITLE_RULES = [
      r'|bora\s+raik)\b',
      'Food & Civil Supplies', 8),
     # Transport & Logistics
-    (r'\b(vehicle\s+hir|bus\s+hir|taxi\s+hir|jeep\s+hir|truck\s+hir'
+    (r'\b(vehicle\s+hire?|bus\s+hire?|taxi\s+hire?|jeep\s+hire?|truck\s+hire?'
      r'|transport\s+(service|contract)|logistics|depot|bus\s+stand'
      r'|goods\s+vehicle|freight|cargo|ambulance\s+service'
      r'|EV\s+charging)\b',
@@ -171,6 +194,12 @@ TITLE_RULES = [
      r'|link\s+road|state\s+highway|national\s+highway|flyover'
      r'|underpass|sampark\s+marg|godown\s+construction|govt\s+building)\b',
      'Infrastructure', 5),
+    # Mining — coal, minerals, quarrying
+    (r'\b(colliery|collieries|coal\s+(mine|block|washery|handling|loading|transport)'
+     r'|overburden|OB\s+dump|OB\s+removal|mineral\s+extraction|quarry'
+     r'|blasting|drilling\s+at\s+mine|mine\s+site|mining\s+area'
+     r'|pit\s+head|sand\s+mine|stone\s+quarry|granite\s+quarry)\b',
+     'Mining', 9),
     # MSME / Industrial
     (r'\b(MSME\b|CSIDC\b|small\s+(enterprise|industry)|industrial\s+(park|estate)'
      r'|manufacturing\s+unit|cluster\s+dev)\b',
@@ -179,14 +208,86 @@ TITLE_RULES = [
     (r'\b(PM\s*JANMAN|MMGGPY|PMAY|PMGSY\b|sampark\s+marg|sadak\s+yojana'
      r'|CGRRDA|gram\s+sadak)\b',
      'Infrastructure', 7),
-    (r'\b(dava\s+apatti|aushadhi|medicine\s+supply|drug\s+supply)\b',
+    (r'\b(daw?a\s+apatti|aushadhi|medicine\s+supply|drug\s+supply)\b',
      'Health', 9),
+    # CHEPS-specific: PHED in title (Public Health Engineering Dept = Water)
+    (r'\bPHED\b',
+     'Water & Sanitation', 10),
+    # CHEPS-specific: TW = Tribal Welfare
+    (r'\bTW\b(?:\s+(?:district|welfare|dept|hostel|school|dantewada|bastar|geedam|jashpur|raigarh|bilaspur|korba|surguja|kondagaon|narayanpur|sukma|bijapur|kanker'
+     r'|katekalyan|kuwakonda|molasnar|bhanupratappur|mainpur|pakhanjur'
+     r'|[A-Z][a-z]{2,}))',
+     'Social Welfare', 9),
     (r'\b(bijli|vidyut|power\s+line|electric\s+pole|HT\s+pole|DT\s+point)\b',
      'Energy', 9),
     (r'\b(nal\s+jal|jal\s+jeevan|pani\s+tank|paani|borewell|tubwell)\b',
      'Water & Sanitation', 9),
     (r'\b(anganwadi\s+cent|poshan|poshahar|ICDS\s+centre)\b',
      'Social Welfare', 9),
+    # Ecorestoration / plantation / nursery work → Environment & Forestry
+    (r'\b(ecorestoration|reforestation|afforestation\s+of|tree\s+plantation'
+     r'|nursery\s+raising|acacia|eucalyptus|teak\s+plantation|ropani'
+     r'|forest\s+produce|van\s+upaj)\b',
+     'Environment & Forestry', 9),
+    # CHEPS-specific: PHE (without D) = Water
+    (r'\bPHE[A-Z0-9\s]+TENDAR|\bPHE\s+(AMBIKAPUR|BILASPUR|RAIPUR|JAGDALPUR|RAIGARH|KORBA|DURG)',
+     'Water & Sanitation', 10),
+    # Bandhara / minor dam → Water & Sanitation
+    (r'\bbandhara\b|storage\s+bandhara|check\s+bandhara',
+     'Water & Sanitation', 9),
+    # Mission Bhagiratha (Telangana water mission) → Water
+    (r'\bBhagiratha\b|Mission\s+Bhagiratha',
+     'Water & Sanitation', 9),
+    # Pumping station / MPS sensor → Water
+    (r'\bpumping\s+station\b|level\s+sensor.*MPS|MPS\s+.*sensor|disposal.*MPS',
+     'Water & Sanitation', 8),
+    # Sand ghats / riverbed mining → Mining
+    (r'\bsand\s+(ghat|bed|block)|settlement.*sand\s+ghat|e.?auction.*sand',
+     'Mining', 9),
+    # BT road resurfacing → Infrastructure
+    (r'\bBT\s+R\s*[/.]\s*[Ff]\b|\bBT\s+road\s+work\b',
+     'Infrastructure', 7),
+    # Cancelled / cancellation notice → Administrative Notice
+    (r'\b(Tender\s+Cancel(l?ed|l?ation)|NIT\s+Cancel|Canceletion\s+Oredr'
+     r'|Cancel(l?ed|l?ation)\s+Order|Tender\s+Withdrawn)',
+     'Administrative Notice', 10),
+    # Cultural / community hall → Social Welfare
+    (r'\b(samskarika\s+nilayam|cultural\s+(cent|hall|bhavan)'
+     r'|community\s+(hall|cent)|kalyana\s+mandap|jan\s+seva\s+kendra)\b',
+     'Social Welfare', 8),
+    # Vehicle / transport service provider → Transport
+    (r'\b(vehicle\s+service\s+provider|Other\s+Vehicle.*Provider'
+     r'|bus\s+service\s+contract|transport\s+service\s+provider)\b',
+     'Transport & Logistics', 8),
+    # Sanitation fixtures not caught by main water rule
+    (r'\b(compost\s+pit|soak\s+pit|leach\s+pit|septic\s+tank|solid\s+waste\s+management'
+     r'|waste\s+disposal|sewerage\s+line|diversion\s+channel)\b',
+     'Water & Sanitation', 9),
+    # Dredging / sand auction → Mining
+    (r'\b(dredg(ing|ed)?|sand\s+(auction|lot)|local\s+sand|dredged\s+material)\b',
+     'Mining', 8),
+    # CAD / Command Area Development → Agriculture (irrigation)
+    (r'\b(CADA?\b|command\s+area|disty\s+ch|distributary\s+ch|canal\s+command)\b',
+     'Agriculture', 8),
+    # ESIC / health insurance → Health
+    (r'\bESIC\b|employees?\s+state\s+insurance|ESI\s+hospital',
+     'Health', 9),
+    # Shop / stall / market allotment → Urban Development
+    (r'\b(allotment\s+of\s+(new\s+)?shop|shop\s+no\s+\d|canteen\s+stall|kiosk\s+(allot|tender)'
+     r'|market\s+allotment|stall\s+allotment)\b',
+     'Urban Development', 7),
+    # Sign board / hoarding → Urban Development
+    (r'\b(sign\s+board|hoarding\s+(installation|erection|fabrication)|display\s+board)\b',
+     'Urban Development', 7),
+    # Rubber / plantation processing → Agriculture
+    (r'\b(rubber\s+(mill|processing|latex|sheet|plantation)|mixing\s+mill|Kerala\s+Rubber)\b',
+     'Agriculture', 8),
+    # Human resource / manpower / outsourcing → Other (keep low priority, don't override)
+    # Fire fighting at ITI/school → Education (ITI already catches "ITI\b")
+    (r'\bfire\s+fight(ing)?\s+(arrangement|system|equipment)\b',
+     'Infrastructure', 6),
+    # Auction / liquidation of material → skip (too generic)
+    # Empanelment of vendors → Other (keep)
 ]
 
 # Pre-compile
@@ -225,7 +326,7 @@ def classify_unclassified(conn: sqlite3.Connection) -> dict:
     cur = conn.cursor()
     rows = cur.execute(
         "SELECT tender_id, title, department, sector FROM tenders "
-        "WHERE sector IN ('Other', 'Works', 'General')"
+        "WHERE sector IN ('Other', 'Works', 'General') OR sector IS NULL"
     ).fetchall()
 
     logger.info("[CLASSIFY] %d tenders to reclassify", len(rows))

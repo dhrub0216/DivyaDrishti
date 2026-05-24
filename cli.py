@@ -153,7 +153,7 @@ def main():
     # Visit NIC GePNIC portal detail pages to extract Tender Value amounts
     if args.enrich_nic:
         from scrapers.enrich_nic import enrich_nic_portal_amounts
-        _conn = sqlite3.connect(DB_PATH)
+        _conn = sqlite3.connect(DB_PATH, timeout=60)
         results = enrich_nic_portal_amounts(
             _conn,
             limit_per_portal=args.nic_limit,

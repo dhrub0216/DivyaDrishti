@@ -45,6 +45,25 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _db_retry(fn, *args, retries=8, base_delay=1.0):
+    """Retry a SQLite call on 'database is locked' with exponential backoff.
+
+    SQLite allows only one writer at a time. When two enricher processes run
+    in parallel, the slower one will hit OperationalError('database is locked').
+    This wrapper waits up to ~4 minutes total (1+2+4+8+16+32+64+128 s) before
+    giving up.
+    """
+    for attempt in range(retries):
+        try:
+            return fn(*args)
+        except sqlite3.OperationalError as exc:
+            if 'locked' not in str(exc) or attempt == retries - 1:
+                raise
+            wait = base_delay * (2 ** attempt)
+            logger.warning("[NIC-ENRICH] DB locked — retry %d/%d in %.0fs", attempt + 1, retries, wait)
+            time.sleep(wait)
+
 # ── Amount extraction patterns ─────────────────────────────────────────────────
 _TV  = re.compile(r'Tender\s+Value\s+in\s+₹\s*([\d,]+(?:\.\d+)?)', re.IGNORECASE)
 _EMD = re.compile(r'EMD\s+Amount\s+in\s+₹\s*([\d,]+(?:\.\d+)?)',   re.IGNORECASE)
@@ -81,6 +100,8 @@ _DOMAIN_PREFIX: dict[str, str] = {
     "meghalayatenders.gov.in":        "ETME",
     "manipurtenders.gov.in":          "ETMN",
     "nagalandtenders.gov.in":         "ETNL",
+    "www.pmgsytenders.gov.in":        "ETPMGSY",
+    "tenders.ladakh.gov.in":          "ETLDK",
     # Central Government portal — uses /eprocure/app path (not /nicgep/app)
     "eprocure.gov.in":                "ETC(",
 }
@@ -141,6 +162,15 @@ def enrich_nic_portal_amounts(
     import urllib3
     urllib3.disable_warnings()
     from bs4 import BeautifulSoup as BS
+
+    # Enable WAL mode (allows concurrent reads alongside writes) and set a
+    # 60-second busy-timeout so SQLite waits instead of immediately raising
+    # OperationalError when another process holds the write lock.
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=60000")
+    except sqlite3.OperationalError:
+        pass  # read-only connection or already set — not fatal
 
     H = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
@@ -293,15 +323,16 @@ def enrich_nic_portal_amounts(
 
                 # Store in raw Rupees (consistent with Bihar/CHEPS scrapers).
                 # app.py normalises to Crores at display time based on magnitude.
-                cur.execute(
+                _db_retry(
+                    cur.execute,
                     "UPDATE tenders SET allocated_amount=? WHERE tender_id=?",
-                    (amount_rs, db_tid)
+                    (amount_rs, db_tid),
                 )
                 stats["updated"] += 1
                 portal_updated += 1
                 logger.info("[NIC-ENRICH] %s  ₹%.0f (%.4f Cr)", db_tid, amount_rs, amount_rs/1e7)
 
-        conn.commit()
+        _db_retry(conn.commit)
         logger.info("[NIC-ENRICH] %s done — visited=%d updated=%d errors=%d",
                     domain, stats["visited"], stats["updated"], stats["errors"])
 

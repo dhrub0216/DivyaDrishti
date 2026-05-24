@@ -1,12 +1,25 @@
 """Deep-scrape enrichment functions for Bihar EPSV2 and UP Jal Nigam tenders."""
 
 import re
+import sqlite3
 import time
 import logging
 
 from repository.db import get_db
 
 logger = logging.getLogger(__name__)
+
+
+def _db_retry(fn, *args, retries=8, base_delay=1.0):
+    for attempt in range(retries):
+        try:
+            return fn(*args)
+        except sqlite3.OperationalError as exc:
+            if 'locked' not in str(exc) or attempt == retries - 1:
+                raise
+            wait = base_delay * (2 ** attempt)
+            logger.warning("[DEEP] DB locked — retry %d/%d in %.0fs", attempt + 1, retries, wait)
+            time.sleep(wait)
 
 NAV_TIMEOUT = 30_000
 
@@ -210,6 +223,11 @@ def deep_scrape_up_tenders(limit: int = 300) -> dict:
         return round(value if 'crore' in unit else value / 100, 4)
 
     conn  = get_db()
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=60000")
+    except sqlite3.OperationalError:
+        pass
     rows  = conn.execute(
         """SELECT tender_id, source_url FROM tenders
            WHERE source = 'Jal Nigam/UP'
@@ -265,11 +283,10 @@ def deep_scrape_up_tenders(limit: int = 300) -> dict:
                 continue
 
             # Step 4: update DB
-            conn.execute(
-                "UPDATE tenders SET allocated_amount = ? WHERE tender_id = ?",
-                (amount, tender_id),
-            )
-            conn.commit()
+            _db_retry(conn.execute,
+                      "UPDATE tenders SET allocated_amount = ? WHERE tender_id = ?",
+                      (amount, tender_id))
+            _db_retry(conn.commit)
             stats["updated"] += 1
 
             if stats["updated"] % 25 == 0:
