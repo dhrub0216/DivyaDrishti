@@ -82,7 +82,7 @@ RUPEES_PER_CRORE  = 1_00_00_000   # 10 million
 RUPEES_THRESHOLD  = 100_000       # amounts above this are raw Rupees
 CRORE_MAX         = 2_000         # amounts in this range are Crores already
 MIN_VALID_AMOUNT  = 10_000        # raw Rupees floor; anything below is noise
-STATUS_COLORS     = {"Active": "#2E7D52", "Awarded": "#C47629", "Completed": "#1A4A7A"}
+STATUS_COLORS     = {"Active": "#1A9E6A", "Awarded": "#E8981E", "Completed": "#0E8C8C"}
 
 # Sectors that are unclassified catch-alls — moved to bottom of filter lists
 UNCLASSIFIED_SECTORS = {"Other", "Works", "General"}
@@ -93,65 +93,65 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
 
 :root {
-  --saffron:#C47629; --gold:#A8821E; --maroon:#7B2D42;
-  --ink:#2C1810;     --muted:#6B5C4A; --ivory:#FEFDF7;
-  --cream:#F8F2E4;   --border:#E4D9C5;
+  --navy:#0D1B2A;    --mid-navy:#1B2A3B; --teal:#0E8C8C;
+  --amber:#E8981E;   --slate:#3A5068;    --muted:#7A90A4;
+  --bg:#F4F7FB;      --card:#FFFFFF;     --border:#C4D4E3;
 }
 html, body, [class*="css"] { font-family:'Inter',sans-serif !important; }
 
 div[data-testid="metric-container"] {
-  background:linear-gradient(145deg,#FEFDF7,#F5EDD8);
-  border:1px solid #E4D9C5; border-radius:12px; padding:14px 18px;
-  border-left:4px solid var(--saffron);
+  background:linear-gradient(145deg,#FFFFFF,#EBF3FA);
+  border:1px solid #C4D4E3; border-radius:12px; padding:14px 18px;
+  border-left:4px solid var(--teal);
 }
 
 .insight-card {
-  background:linear-gradient(135deg,#FFFBF2,#FFF3E0);
-  border:1px solid #E8D5B0; border-left:5px solid #C47629;
+  background:linear-gradient(135deg,#F4F9FF,#E8F3FF);
+  border:1px solid #B8D0E8; border-left:5px solid #0E8C8C;
   border-radius:12px; padding:18px 22px; margin:10px 0;
 }
-.insight-card h4 { color:#7B2D42; margin:0 0 8px 0; font-size:1rem; }
-.insight-card p  { color:#3D2B1A; line-height:1.65; margin:0; font-size:.88rem; }
+.insight-card h4 { color:#0D1B2A; margin:0 0 8px 0; font-size:1rem; }
+.insight-card p  { color:#1B2A3B; line-height:1.65; margin:0; font-size:.88rem; }
 
 .spotlight-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:10px 0 14px 0; }
 .spotlight {
-  background:#FEFDF7; border:1px solid #E4D9C5; border-radius:14px;
+  background:#FFFFFF; border:1px solid #C4D4E3; border-radius:14px;
   padding:14px 16px; text-align:center;
 }
 .spotlight-icon { font-size:1.8rem; display:block; margin-bottom:4px; }
 .spotlight-val  { font-family:'Rajdhani',sans-serif; font-size:1.3rem;
-                  font-weight:700; color:#7B2D42; display:block; }
-.spotlight-lbl  { font-size:.73rem; color:#6B5C4A; margin-top:3px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
-.spotlight-desc { font-size:.70rem; color:#9B8B78; margin-top:5px; line-height:1.4; }
+                  font-weight:700; color:#0D1B2A; display:block; }
+.spotlight-lbl  { font-size:.73rem; color:#3A5068; margin-top:3px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+.spotlight-desc { font-size:.70rem; color:#7A90A4; margin-top:5px; line-height:1.4; }
 
 .section-label {
   font-family:'Rajdhani',sans-serif; font-size:1.05rem; font-weight:600;
-  color:#7B2D42; letter-spacing:0.3px; margin:4px 0 2px 0;
+  color:#0D1B2A; letter-spacing:0.3px; margin:4px 0 2px 0;
 }
-.section-desc { font-size:.78rem; color:#6B5C4A; margin-bottom:6px; line-height:1.5; }
+.section-desc { font-size:.78rem; color:#3A5068; margin-bottom:6px; line-height:1.5; }
 
-.data-note { background:#FFF8E8; border:1px solid #F0D89A; border-radius:6px;
-             padding:6px 12px; font-size:.76rem; color:#7A6030; margin:4px 0 8px 0; }
+.data-note { background:#EBF4FF; border:1px solid #B8D4F0; border-radius:6px;
+             padding:6px 12px; font-size:.76rem; color:#1E4A70; margin:4px 0 8px 0; }
 
 button[data-baseweb="tab"] {
   font-family:'Rajdhani',sans-serif !important;
   font-size:.95rem !important; font-weight:600 !important;
 }
 section[data-testid="stSidebar"]>div:first-child {
-  background:linear-gradient(180deg,#1C0F08 0%,#2C1810 60%,#1A0A05 100%);
+  background:linear-gradient(180deg,#050D18 0%,#0D1B2A 60%,#060F1C 100%);
 }
-section[data-testid="stSidebar"] * { color:#F0E8D8 !important; }
+section[data-testid="stSidebar"] * { color:#D8E8F5 !important; }
 section[data-testid="stSidebar"] input, section[data-testid="stSidebar"] select {
-  background:#3D2416 !important; border-color:#6B4C2A !important;
+  background:#0F2132 !important; border-color:#1E3A5F !important;
 }
-thead tr th { background:#7B2D42 !important; color:white !important; }
+thead tr th { background:#0D1B2A !important; color:white !important; }
 .badge {
   display:inline-block; padding:3px 14px; border-radius:20px;
-  background:linear-gradient(135deg,#C47629,#7B2D42);
+  background:linear-gradient(135deg,#E8981E,#0E8C8C);
   color:white; font-size:.78rem; font-weight:600; letter-spacing:.5px;
 }
-.agg-warn { background:#FFF3CD; border:1px solid #FFEAA7; border-radius:8px;
-            padding:8px 14px; font-size:.82rem; color:#7B6B3A; margin-bottom:8px; }
+.agg-warn { background:#FFF8E6; border:1px solid #FFE57A; border-radius:8px;
+            padding:8px 14px; font-size:.82rem; color:#5A4A20; margin-bottom:8px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -204,11 +204,11 @@ with st.sidebar:
     st.markdown("""
     <div style="padding:14px 0 10px 0;text-align:center;">
       <div style="font-family:'Rajdhani',sans-serif;font-size:1.6rem;font-weight:700;
-                  background:linear-gradient(135deg,#C47629,#F5C97E);
+                  background:linear-gradient(135deg,#E8981E,#0E8C8C);
                   -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
         🪷 DivyaDrishti
       </div>
-      <div style="font-size:.68rem;letter-spacing:3px;color:#C4A882;margin-top:3px;">
+      <div style="font-size:.68rem;letter-spacing:3px;color:#7AB8D8;margin-top:3px;">
         PROCUREMENT INTELLIGENCE
       </div>
     </div>
@@ -423,10 +423,10 @@ st.markdown(f"""
   <div>
     <div style="font-family:'Rajdhani',sans-serif;font-size:2.2rem;font-weight:700;
                 line-height:1.05;">
-      <span style="color:#C47629;">Divya</span><span style="color:#7B2D42;">Drishti</span>
+      <span style="color:#E8981E;">Divya</span><span style="color:#0D1B2A;">Drishti</span>
     </div>
-    <div style="font-size:.78rem;color:#A8821E;letter-spacing:2px;">दिव्यदृष्टि</div>
-    <div style="font-size:.73rem;color:#6B5C4A;margin-top:2px;">
+    <div style="font-size:.78rem;color:#0E8C8C;letter-spacing:2px;">दिव्यदृष्टि</div>
+    <div style="font-size:.73rem;color:#3A5068;margin-top:2px;">
       Pan-India Procurement Intelligence · {df_master["state"].nunique()} States/UTs · {len(df_master):,} Tenders
     </div>
   </div>
@@ -721,11 +721,11 @@ with tab2:
             x=[str(c) for c in hm_df.columns],
             y=[str(r) for r in hm_df.index],
             colorscale=[
-                [0,    "#FFFBF2"],
-                [0.2,  "#F5C97E"],
-                [0.5,  "#C47629"],
-                [0.8,  "#7B2D42"],
-                [1.0,  "#2C0F18"],
+                [0,    "#F4F7FB"],
+                [0.2,  "#A8D4E8"],
+                [0.5,  "#0E8C8C"],
+                [0.8,  "#0D1B2A"],
+                [1.0,  "#060F1C"],
             ],
             hovertemplate="<b>%{y} — %{x}</b><br>%{z:,} tenders<extra></extra>",
             text=[[str(int(v)) if v > 0 else "" for v in row] for row in hm_df.values],
@@ -758,7 +758,7 @@ with tab2:
             fig_dist = px.bar(
                 dist_agg.sort_values("Tenders"),
                 x="Tenders", y="district", orientation="h",
-                color="Budget_Cr", color_continuous_scale=["#F8E8CC","#C47629","#7B2D42"],
+                color="Budget_Cr", color_continuous_scale=["#D4EAF7","#0E8C8C","#0D1B2A"],
                 text="Tenders",
                 hover_data={"Budget_Cr":":.1f","Sectors":True},
                 labels={"district":"District","Budget_Cr":"Budget (₹ Cr)"},
@@ -903,7 +903,7 @@ with tab3:
         fig_sankey = go.Figure(go.Sankey(
             node=dict(
                 pad=12, thickness=20,
-                line=dict(color="#E4D9C5", width=0.5),
+                line=dict(color="#C4D4E3", width=0.5),
                 label=node_labels,
                 color=node_colors,
                 hovertemplate="%{label}<br>%{value:,} tenders<extra></extra>",
@@ -948,13 +948,13 @@ with tab3:
 
         fig_tl = px.area(
             tl_agg, x="Month", y="Tenders",
-            color_discrete_sequence=["#C47629"],
+            color_discrete_sequence=["#0E8C8C"],
             height=280,
             labels={"Tenders":"Tender Count","Month":"Month"},
         )
         fig_tl.update_traces(
             fill="tozeroy",
-            line=dict(color="#C47629", width=2),
+            line=dict(color="#0E8C8C", width=2),
             fillcolor="rgba(196,118,41,0.25)",
         )
         fig_tl.update_layout(
@@ -987,7 +987,7 @@ with tab3:
         fig_dept = px.bar(dept_lb, x="Tenders", y="Dept", orientation="h",
                           text="Tenders", height=380,
                           color="Tenders",
-                          color_continuous_scale=["#F8E8CC","#C47629","#7B2D42"])
+                          color_continuous_scale=["#D4EAF7","#0E8C8C","#0D1B2A"])
         fig_dept.update_traces(texttemplate="%{text:,}", textposition="outside")
         fig_dept.update_layout(coloraxis_showscale=False,
                                 margin=dict(t=5,b=5,l=5,r=40),
@@ -1038,7 +1038,7 @@ with tab3:
                    "Typical log-normal: many small, a few very large.")
         if not budget_df.empty:
             fig_hist = px.histogram(budget_df, x="amount_cr", nbins=40,
-                                    color_discrete_sequence=["#C47629"],
+                                    color_discrete_sequence=["#0E8C8C"],
                                     labels={"amount_cr":"₹ Crores"},
                                     height=300)
             fig_hist.update_layout(margin=dict(t=5,b=5,l=5,r=5),
@@ -1097,7 +1097,7 @@ with tab4:
         fig_srcbar = px.bar(
             src_display.sort_values("Tenders"),
             x="Tenders", y="Portal_Short", orientation="h",
-            color="Tenders", color_continuous_scale=["#F8E8CC","#C47629","#7B2D42"],
+            color="Tenders", color_continuous_scale=["#D4EAF7","#0E8C8C","#0D1B2A"],
             text="Tenders", height=360,
             labels={"Tenders":"Tender Count","Portal_Short":"Portal"},
         )
