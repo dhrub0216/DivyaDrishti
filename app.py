@@ -95,63 +95,107 @@ st.markdown("""
 :root {
   --navy:#0D1B2A;    --mid-navy:#1B2A3B; --teal:#0E8C8C;
   --amber:#E8981E;   --slate:#3A5068;    --muted:#7A90A4;
-  --bg:#F4F7FB;      --card:#FFFFFF;     --border:#C4D4E3;
+  --bg:#EDF2F7;      --card:#FFFFFF;     --border:#B0C8E0;
 }
 html, body, [class*="css"] { font-family:'Inter',sans-serif !important; }
 
+/* ── KPI metric cards ── */
 div[data-testid="metric-container"] {
-  background:linear-gradient(145deg,#FFFFFF,#EBF3FA);
-  border:1px solid #C4D4E3; border-radius:12px; padding:14px 18px;
-  border-left:4px solid var(--teal);
+  background:linear-gradient(145deg,#FFFFFF,#DFF0FA);
+  border:1px solid #B0C8E0; border-radius:12px; padding:14px 18px;
+  border-left:6px solid #E8981E;
+  box-shadow:0 2px 8px rgba(14,140,140,0.12);
+}
+/* Metric value number — amber */
+div[data-testid="metric-container"] [data-testid="metric-value"] > div {
+  color:#E8981E !important; font-weight:700 !important;
+}
+/* Metric label — teal */
+div[data-testid="metric-container"] label {
+  color:#0E8C8C !important; font-weight:600 !important; font-size:.8rem !important;
 }
 
+/* ── Insight / briefing card ── */
 .insight-card {
-  background:linear-gradient(135deg,#F4F9FF,#E8F3FF);
-  border:1px solid #B8D0E8; border-left:5px solid #0E8C8C;
+  background:linear-gradient(135deg,#E8F6F6,#D4EDF8);
+  border:2px solid #0E8C8C; border-left:6px solid #E8981E;
   border-radius:12px; padding:18px 22px; margin:10px 0;
 }
-.insight-card h4 { color:#0D1B2A; margin:0 0 8px 0; font-size:1rem; }
-.insight-card p  { color:#1B2A3B; line-height:1.65; margin:0; font-size:.88rem; }
+.insight-card h4 { color:#E8981E; margin:0 0 8px 0; font-size:1rem; font-weight:700; }
+.insight-card p  { color:#0D1B2A; line-height:1.65; margin:0; font-size:.88rem; }
 
+/* ── Spotlight cards ── */
 .spotlight-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:10px 0 14px 0; }
 .spotlight {
-  background:#FFFFFF; border:1px solid #C4D4E3; border-radius:14px;
-  padding:14px 16px; text-align:center;
+  background:linear-gradient(160deg,#FFFFFF,#E8F4FB);
+  border:1px solid #B0C8E0; border-top:4px solid #0E8C8C;
+  border-radius:14px; padding:14px 16px; text-align:center;
+  box-shadow:0 2px 6px rgba(13,27,42,0.08);
 }
 .spotlight-icon { font-size:1.8rem; display:block; margin-bottom:4px; }
 .spotlight-val  { font-family:'Rajdhani',sans-serif; font-size:1.3rem;
-                  font-weight:700; color:#0D1B2A; display:block; }
-.spotlight-lbl  { font-size:.73rem; color:#3A5068; margin-top:3px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
-.spotlight-desc { font-size:.70rem; color:#7A90A4; margin-top:5px; line-height:1.4; }
+                  font-weight:700; color:#E8981E; display:block; }
+.spotlight-lbl  { font-size:.73rem; color:#0E8C8C; margin-top:3px; font-weight:700;
+                  text-transform:uppercase; letter-spacing:.8px; }
+.spotlight-desc { font-size:.70rem; color:#3A5068; margin-top:5px; line-height:1.4; }
 
+/* ── Section labels & descriptions ── */
 .section-label {
-  font-family:'Rajdhani',sans-serif; font-size:1.05rem; font-weight:600;
-  color:#0D1B2A; letter-spacing:0.3px; margin:4px 0 2px 0;
+  font-family:'Rajdhani',sans-serif; font-size:1.1rem; font-weight:700;
+  color:#E8981E; letter-spacing:0.5px; margin:4px 0 2px 0;
+  border-left:3px solid #0E8C8C; padding-left:8px;
 }
 .section-desc { font-size:.78rem; color:#3A5068; margin-bottom:6px; line-height:1.5; }
 
-.data-note { background:#EBF4FF; border:1px solid #B8D4F0; border-radius:6px;
-             padding:6px 12px; font-size:.76rem; color:#1E4A70; margin:4px 0 8px 0; }
+/* ── Data note ── */
+.data-note { background:#D4EDF8; border:1px solid #0E8C8C; border-radius:6px;
+             padding:6px 12px; font-size:.76rem; color:#0D1B2A; margin:4px 0 8px 0; }
 
+/* ── Tabs ── */
 button[data-baseweb="tab"] {
   font-family:'Rajdhani',sans-serif !important;
-  font-size:.95rem !important; font-weight:600 !important;
+  font-size:.95rem !important; font-weight:700 !important;
+  color:#3A5068 !important;
 }
+button[data-baseweb="tab"][aria-selected="true"] {
+  color:#E8981E !important;
+  border-bottom:3px solid #E8981E !important;
+}
+
+/* ── Sidebar ── */
 section[data-testid="stSidebar"]>div:first-child {
   background:linear-gradient(180deg,#050D18 0%,#0D1B2A 60%,#060F1C 100%);
 }
 section[data-testid="stSidebar"] * { color:#D8E8F5 !important; }
-section[data-testid="stSidebar"] input, section[data-testid="stSidebar"] select {
-  background:#0F2132 !important; border-color:#1E3A5F !important;
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3,
+section[data-testid="stSidebar"] h4 { color:#E8981E !important; }
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] select {
+  background:#142338 !important;
+  border:1px solid #0E8C8C !important;
+  color:#FFFFFF !important;
 }
-thead tr th { background:#0D1B2A !important; color:white !important; }
+section[data-testid="stSidebar"] .stMultiSelect [data-baseweb="tag"] {
+  background:#0E8C8C !important;
+}
+
+/* ── Table header ── */
+thead tr th { background:#0D1B2A !important; color:#E8981E !important;
+              font-weight:700 !important; letter-spacing:.4px; }
+tbody tr:nth-child(even) td { background:#F0F7FC !important; }
+
+/* ── Badge ── */
 .badge {
-  display:inline-block; padding:3px 14px; border-radius:20px;
+  display:inline-block; padding:4px 16px; border-radius:20px;
   background:linear-gradient(135deg,#E8981E,#0E8C8C);
-  color:white; font-size:.78rem; font-weight:600; letter-spacing:.5px;
+  color:white; font-size:.78rem; font-weight:700; letter-spacing:.8px;
+  box-shadow:0 2px 8px rgba(232,152,30,0.4);
 }
-.agg-warn { background:#FFF8E6; border:1px solid #FFE57A; border-radius:8px;
-            padding:8px 14px; font-size:.82rem; color:#5A4A20; margin-bottom:8px; }
+/* ── Aggregation warning ── */
+.agg-warn { background:#FFF8E6; border:2px solid #E8981E; border-radius:8px;
+            padding:8px 14px; font-size:.82rem; color:#5A3A10; margin-bottom:8px; }
 </style>
 """, unsafe_allow_html=True)
 
