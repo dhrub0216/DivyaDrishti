@@ -177,8 +177,38 @@ section[data-testid="stSidebar"] select {
   border:1px solid #0E8C8C !important;
   color:#FFFFFF !important;
 }
+/* Streamlit BaseWeb selectbox dropdowns in sidebar */
+section[data-testid="stSidebar"] [data-baseweb="select"] > div:first-child {
+  background:#142338 !important;
+  border:1px solid #0E8C8C !important;
+  border-radius:8px !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="select"] [data-testid="stWidgetLabel"] {
+  color:#E8981E !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="select"] svg {
+  fill:#0E8C8C !important;
+}
+/* Dropdown option list (popover) */
+[data-baseweb="popover"] ul, [data-baseweb="menu"] {
+  background:#0D1B2A !important;
+  border:1px solid #0E8C8C !important;
+}
+[data-baseweb="popover"] li, [data-baseweb="menu"] li {
+  background:#0D1B2A !important;
+  color:#D8E8F5 !important;
+}
+[data-baseweb="popover"] li:hover, [data-baseweb="menu"] li:hover {
+  background:#1B3A5C !important;
+  color:#E8981E !important;
+}
+[data-baseweb="option"][aria-selected="true"] {
+  background:#1B3A5C !important;
+  color:#E8981E !important;
+}
 section[data-testid="stSidebar"] .stMultiSelect [data-baseweb="tag"] {
   background:#0E8C8C !important;
+  color:#FFFFFF !important;
 }
 
 /* ── Table header ── */
