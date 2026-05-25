@@ -556,6 +556,19 @@ def load_enterprise_tender_stream() -> pd.DataFrame:
         df = apply_memory_optimization(df)
         return df
 
+    # Try the committed Parquet snapshot (real data, used on Streamlit Cloud)
+    parquet_file = BASE_DIR / "data" / "tenders_snapshot.parquet"
+    if parquet_file.exists():
+        logger.info("Parquet snapshot found — reading %s ...", parquet_file)
+        try:
+            df = pd.read_parquet(parquet_file)
+            if len(df) > 100:
+                logger.info("Loaded %d rows from Parquet snapshot.", len(df))
+                df = apply_memory_optimization(df)
+                return df
+        except Exception as exc:
+            logger.warning("Failed to read Parquet snapshot (%s) — falling back.", exc)
+
     # Try cached seed data
     csv_file = BASE_DIR / "data" / "generated_tenders.csv"
     if csv_file.exists():
