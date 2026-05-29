@@ -69,7 +69,7 @@ st.set_page_config(
     page_title="DivyaDrishti — Procurement Intelligence",
     page_icon="🪷",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 # ── Constants ──────────────────────────────────────────────────────────────────
@@ -98,6 +98,21 @@ st.markdown("""
   --bg:#EDF2F7;      --card:#FFFFFF;     --border:#B0C8E0;
 }
 html, body, [class*="css"] { font-family:'Inter',sans-serif !important; }
+
+/* ── Main container ── */
+.main .block-container {
+  padding-top:1rem !important;
+  max-width:100% !important;
+}
+/* ── Page header classes ── */
+.divya-header {
+  display:flex; align-items:center; gap:16px; padding:6px 0 4px 0; flex-wrap:wrap;
+}
+.divya-logo  { font-size:3rem; line-height:1; flex-shrink:0; }
+.divya-title {
+  font-family:'Rajdhani',sans-serif; font-size:2.2rem; font-weight:700; line-height:1.05;
+}
+.divya-badge-wrap { margin-left:auto; }
 
 /* ── KPI metric cards ── */
 div[data-testid="metric-container"] {
@@ -226,6 +241,52 @@ tbody tr:nth-child(even) td { background:#F0F7FC !important; }
 /* ── Aggregation warning ── */
 .agg-warn { background:#FFF8E6; border:2px solid #E8981E; border-radius:8px;
             padding:8px 14px; font-size:.82rem; color:#5A3A10; margin-bottom:8px; }
+
+/* ══════════════════════════════════════════════════════════
+   RESPONSIVE — Mobile, iPad, Desktop
+   ══════════════════════════════════════════════════════════ */
+
+/* ── iPad Pro / large tablets (≤1024px) ── */
+@media screen and (max-width:1024px) {
+  .spotlight-grid { grid-template-columns:repeat(2,1fr) !important; }
+  .divya-badge-wrap { display:none !important; }
+  .main .block-container { padding-left:1.5rem !important; padding-right:1.5rem !important; }
+}
+
+/* ── iPad portrait (≤768px) ── */
+@media screen and (max-width:768px) {
+  [data-testid="stHorizontalBlock"] { flex-wrap:wrap !important; gap:0.4rem !important; }
+  [data-testid="stHorizontalBlock"] > div { min-width:calc(30% - 0.4rem) !important; flex:1 1 calc(30% - 0.4rem) !important; }
+  div[data-baseweb="tab-list"] { overflow-x:auto !important; -webkit-overflow-scrolling:touch !important; flex-wrap:nowrap !important; }
+  button[data-baseweb="tab"] { font-size:0.8rem !important; padding:8px 10px !important; white-space:nowrap !important; }
+  .divya-title { font-size:1.9rem !important; }
+  .main .block-container { padding-left:1rem !important; padding-right:1rem !important; }
+}
+
+/* ── Mobile phones (≤480px) ── */
+@media screen and (max-width:480px) {
+  [data-testid="stHorizontalBlock"] { flex-direction:column !important; flex-wrap:nowrap !important; gap:0 !important; }
+  [data-testid="stHorizontalBlock"] > div { width:100% !important; min-width:100% !important; flex:none !important; }
+  .spotlight-grid { grid-template-columns:1fr 1fr !important; gap:8px !important; }
+  .spotlight { padding:10px 8px !important; }
+  .spotlight-icon { font-size:1.4rem !important; }
+  .spotlight-val  { font-size:1rem !important; }
+  .spotlight-desc { display:none !important; }
+  .divya-header { flex-direction:column !important; align-items:flex-start !important; gap:4px !important; }
+  .divya-logo  { font-size:2rem !important; }
+  .divya-title { font-size:1.5rem !important; }
+  div[data-testid="metric-container"] { padding:8px 10px !important; }
+  div[data-testid="metric-container"] [data-testid="metric-value"] > div { font-size:1rem !important; }
+  div[data-testid="metric-container"] label { font-size:.65rem !important; }
+  div[data-baseweb="tab-list"] { overflow-x:auto !important; -webkit-overflow-scrolling:touch !important; flex-wrap:nowrap !important; }
+  button[data-baseweb="tab"] { font-size:0.72rem !important; padding:5px 7px !important; white-space:nowrap !important; }
+  .insight-card { padding:12px 14px !important; }
+  .insight-card p { font-size:0.8rem !important; }
+  .section-label { font-size:0.95rem !important; }
+  .main .block-container { padding-left:0.75rem !important; padding-right:0.75rem !important; padding-top:0.75rem !important; }
+  div[data-testid="stDataFrame"] { overflow-x:auto !important; }
+  section[data-testid="stSidebar"]>div:first-child { min-width:85vw !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -492,11 +553,10 @@ narrative_html = build_narrative(df, drill_level, selected_state, selected_distr
 
 # ── PAGE HEADER ────────────────────────────────────────────────────────────────
 st.markdown(f"""
-<div style="display:flex;align-items:center;gap:16px;padding:6px 0 4px 0;">
-  <div style="font-size:3rem;line-height:1;">🪷</div>
+<div class="divya-header">
+  <div class="divya-logo">🪷</div>
   <div>
-    <div style="font-family:'Rajdhani',sans-serif;font-size:2.2rem;font-weight:700;
-                line-height:1.05;">
+    <div class="divya-title">
       <span style="color:#E8981E;">Divya</span><span style="color:#0D1B2A;">Drishti</span>
     </div>
     <div style="font-size:.78rem;color:#0E8C8C;letter-spacing:2px;">दिव्यदृष्टि</div>
@@ -504,7 +564,7 @@ st.markdown(f"""
       Pan-India Procurement Intelligence · {df_master["state"].nunique()} States/UTs · {len(df_master):,} Tenders
     </div>
   </div>
-  <div style="margin-left:auto;">
+  <div class="divya-badge-wrap">
     <span class="badge">{level_label}</span>
   </div>
 </div>
