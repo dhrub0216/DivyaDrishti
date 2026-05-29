@@ -90,7 +90,7 @@ def _wait_for_app(page) -> None:
         page.wait_for_selector('[data-testid="stSpinner"]', state="hidden", timeout=TIMEOUT)
     except Exception:
         pass  # spinner absent on cache hits
-    page.wait_for_selector('[data-testid="metric-container"]', state="visible", timeout=TIMEOUT)
+    page.wait_for_selector('[data-testid="stMetric"]', state="visible", timeout=TIMEOUT)
 
 
 def _no_horizontal_overflow(page) -> bool:
@@ -111,7 +111,7 @@ def _spotlight_columns(page) -> int:
 
 def _kpi_cards_visible(page) -> bool:
     """Six KPI metric containers are present in the DOM."""
-    return len(page.query_selector_all('[data-testid="metric-container"]')) >= 6
+    return len(page.query_selector_all('[data-testid="stMetric"]')) >= 6
 
 
 def _header_visible(page) -> bool:
