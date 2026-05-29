@@ -2,6 +2,8 @@
 
 **दिव्यदृष्टि** · Pan-India Government Tender Analytics Platform
 
+**Live App:** https://dhrub0216-divyadrishti-app-3bdjsg.streamlit.app
+
 A full-stack intelligence system that scrapes 42,000+ government tenders from 50+ portals across India, classifies them into 12 standard sectors, geocodes them to exact GPS coordinates, and visualises the data in a real-time Streamlit dashboard with innovative charts.
 
 ---
