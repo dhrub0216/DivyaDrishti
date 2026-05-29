@@ -316,6 +316,11 @@ def get_data() -> pd.DataFrame:
     raw["sector_display"] = raw["sector"].apply(
         lambda s: "Unclassified" if s in UNCLASSIFIED_SECTORS else s
     )
+    # normalise status to title-case so "active", "ACTIVE", "Active" all merge
+    raw["status"] = raw["status"].str.strip().str.title()
+    # anything that isn't a known status → "Active" (safest default)
+    known = {"Active", "Awarded", "Completed"}
+    raw["status"] = raw["status"].apply(lambda s: s if s in known else "Active")
     return raw
 
 
