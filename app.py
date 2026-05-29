@@ -292,7 +292,7 @@ tbody tr:nth-child(even) td { background:#F0F7FC !important; }
 
 
 # ── Load & normalise data ──────────────────────────────────────────────────────
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_data() -> pd.DataFrame:
     raw = load_enterprise_tender_stream()
     # Cast categorical columns to plain str (Plotly groupby max() fails on unordered Categorical)
@@ -319,9 +319,142 @@ def get_data() -> pd.DataFrame:
     return raw
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_hierarchy(_df: pd.DataFrame) -> dict:
     return get_full_hierarchy(_df)
+
+
+# ── Cached filter + aggregation helpers ───────────────────────────────────────
+# Each function accepts the filtered DataFrame via _df (unhashed) plus an
+# explicit df_len key so the cache is invalidated whenever the master data
+# changes (e.g. after a scrape + refresh).
+
+@st.cache_data(show_spinner=False)
+def _apply_filters_cached(
+    _df_master, df_len,
+    sector_display, dept, state, district, block,
+    statuses_tuple, budget_only, search_query,
+):
+    """Return the filtered DataFrame for the current sidebar selections."""
+    df = _df_master.copy()
+    if sector_display == "Unclassified":
+        df = df[df["sector"].isin(UNCLASSIFIED_SECTORS)]
+    elif sector_display != ALL:
+        df = df[df["sector_display"] == sector_display]
+    if dept     != ALL: df = df[df["department"] == dept]
+    if state    != ALL: df = df[df["state"]      == state]
+    if district != ALL: df = df[df["district"]   == district]
+    if block    != ALL: df = df[df["block"]      == block]
+    df = df[df["status"].isin(list(statuses_tuple))]
+    if budget_only:
+        df = df[df["has_budget"]]
+    if search_query.strip():
+        q    = search_query.strip().lower()
+        mask = (df["title"].str.lower().str.contains(q, na=False) |
+                df["department"].str.lower().str.contains(q, na=False) |
+                df["tender_id"].str.lower().str.contains(q, na=False))
+        df = df[mask]
+    return df
+
+
+@st.cache_data(show_spinner=False)
+def _state_agg_cached(_df, _df_len):
+    return (
+        _df[_df["state"] != "Central (CPPP)"]
+        .groupby("state")
+        .agg(Tenders=("tender_id", "count"),
+             Budget_Cr=("amount_cr", "sum"),
+             Top_Sector=("sector_display", lambda x: x.value_counts().index[0]))
+        .reset_index()
+        .sort_values("Tenders", ascending=False)
+        .head(20)
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _heatmap_data_cached(_df, _df_len):
+    top_states = (
+        _df[_df["state"] != "Central (CPPP)"]
+        .groupby("state").size().nlargest(15).index.tolist()
+    )
+    hm = (
+        _df[_df["state"].isin(top_states)]
+        .groupby(["state", "sector_display"])
+        .size().unstack(fill_value=0)
+    )
+    return hm.reindex(index=top_states, fill_value=0)
+
+
+@st.cache_data(show_spinner=False)
+def _sector_agg_cached(_df, _df_len):
+    agg = (
+        _df.groupby("sector_display")
+        .agg(Tenders=("tender_id", "count"),
+             Budget_Cr=("amount_cr", "sum"),
+             has_budget_count=("has_budget", "sum"))
+        .reset_index()
+        .sort_values("Tenders", ascending=False)
+    )
+    agg["Budget_Label"] = agg["Budget_Cr"].apply(
+        lambda x: f"₹{x:,.0f} Cr" if x > 0 else "—")
+    return agg
+
+
+@st.cache_data(show_spinner=False)
+def _treemap_data_cached(_budget_df, _df_len):
+    tm = (
+        _budget_df
+        .groupby(["state", "sector_display"])["amount_cr"]
+        .sum().reset_index()
+        .rename(columns={"amount_cr": "₹ Cr", "sector_display": "Sector"})
+    )
+    return tm[tm["₹ Cr"] > 0.01]
+
+
+@st.cache_data(show_spinner=False)
+def _sankey_data_cached(_df, _df_len):
+    def _shorten(s):
+        parts = s.split("/")
+        return parts[-1][:14] if len(parts) >= 2 and parts[-1] else s[:16]
+
+    top_src   = _df.groupby("source").size().nlargest(8).index.tolist()
+    top_states = _df.groupby("state").size().nlargest(10).index.tolist()
+    df_sk = _df[_df["source"].isin(top_src) & _df["state"].isin(top_states)].copy()
+    df_sk["src_label"] = df_sk["source"].apply(_shorten)
+    df_sk["sec_label"] = df_sk["sector_display"]
+
+    src_labels  = df_sk.groupby("source")["src_label"].first().reindex(top_src).tolist()
+    all_secs    = sorted(df_sk["sec_label"].unique().tolist())
+    node_labels = src_labels + top_states + all_secs
+    node_idx    = {n: i for i, n in enumerate(node_labels)}
+    src_to_lbl  = dict(zip(top_src, src_labels))
+
+    sk_links = []
+    for (src, st_), grp in df_sk.groupby(["source", "state"]):
+        lbl = src_to_lbl.get(src, src[:14])
+        if lbl in node_idx and st_ in node_idx:
+            sk_links.append((node_idx[lbl], node_idx[st_], len(grp)))
+    for (st_, sec), grp in df_sk.groupby(["state", "sec_label"]):
+        if st_ in node_idx and sec in node_idx:
+            sk_links.append((node_idx[st_], node_idx[sec], len(grp)))
+    sk_links = [(s, t, v) for s, t, v in sk_links if v > 0]
+    return node_labels, sk_links, src_labels, top_states, all_secs
+
+
+@st.cache_data(show_spinner=False)
+def _portal_data_cached(_df, _df_len):
+    src_vol = _df.groupby("source").size().sort_values(ascending=False)
+    top15   = src_vol.head(15)
+    others  = int(src_vol.iloc[15:].sum()) if len(src_vol) > 15 else 0
+    disp    = top15.copy()
+    if others > 0:
+        disp["All Others"] = others
+    disp = disp.reset_index()
+    disp.columns = ["Portal", "Tenders"]
+    disp["Portal_Short"] = disp["Portal"].apply(
+        lambda s: ("All Others" if s == "All Others" else
+                   s.split("/")[-1][:18] if "/" in s else s[:18]))
+    return disp
 
 
 with st.spinner("🔄 Loading enterprise tender database…"):
@@ -464,30 +597,19 @@ with st.sidebar:
             st.caption("No health log yet.")
 
 
-# ── Apply filters ──────────────────────────────────────────────────────────────
-df = df_master.copy()
-
-# Sector filter
-if selected_sector_display == "Unclassified":
-    df = df[df["sector"].isin(UNCLASSIFIED_SECTORS)]
-elif selected_sector_display != ALL:
-    df = df[df["sector_display"] == selected_sector_display]
-
-if selected_dept     != ALL: df = df[df["department"] == selected_dept]
-if selected_state    != ALL: df = df[df["state"]      == selected_state]
-if selected_district != ALL: df = df[df["district"]   == selected_district]
-if selected_block    != ALL: df = df[df["block"]      == selected_block]
-
-df = df[df["status"].isin(selected_statuses)]
-if budget_only:
-    df = df[df["has_budget"]]   # FIX-02: opt-in, not default
-
-if search_query.strip():
-    q    = search_query.strip().lower()
-    mask = (df["title"].str.lower().str.contains(q, na=False) |
-            df["department"].str.lower().str.contains(q, na=False) |
-            df["tender_id"].str.lower().str.contains(q, na=False))
-    df = df[mask]
+# ── Apply filters (cached per unique filter combination) ───────────────────────
+df = _apply_filters_cached(
+    df_master,
+    len(df_master),                   # invalidation key: changes after a scrape
+    selected_sector_display,
+    selected_dept,
+    selected_state,
+    selected_district,
+    selected_block,
+    tuple(sorted(selected_statuses)), # lists aren't hashable → convert to tuple
+    budget_only,
+    search_query.strip(),
+)
 
 # ── Drill level ────────────────────────────────────────────────────────────────
 if   selected_state    == ALL: drill_level, level_label = "national", "🌏 National — All States"
@@ -798,14 +920,7 @@ with tab2:
         'States with few tenders may indicate limited portal coverage, not low activity.'
         '</div>', unsafe_allow_html=True)
 
-    state_agg = (df[df["state"] != "Central (CPPP)"]
-                 .groupby("state")
-                 .agg(Tenders=("tender_id","count"),
-                      Budget_Cr=("amount_cr","sum"),
-                      Top_Sector=("sector_display", lambda x: x.value_counts().index[0]))
-                 .reset_index()
-                 .sort_values("Tenders", ascending=False)
-                 .head(20))
+    state_agg = _state_agg_cached(df, len(df))
 
     if not state_agg.empty:
         fig_state = px.bar(
@@ -842,12 +957,7 @@ with tab2:
     st.markdown('<div class="data-note">📊 Count-based (not budget) — budget data available for only 20% of tenders.</div>',
                 unsafe_allow_html=True)
 
-    top_hm_states = (df[df["state"] != "Central (CPPP)"]
-                     .groupby("state").size().nlargest(15).index.tolist())
-    hm_df = (df[df["state"].isin(top_hm_states)]
-             .groupby(["state","sector_display"])
-             .size().unstack(fill_value=0))
-    hm_df = hm_df.reindex(index=top_hm_states, fill_value=0)
+    hm_df = _heatmap_data_cached(df, len(df))
 
     if not hm_df.empty:
         fig_hm = go.Figure(go.Heatmap(
@@ -920,14 +1030,7 @@ with tab3:
         'Bar length = tender volume; the secondary label shows budget where available.'
         '</div>', unsafe_allow_html=True)
 
-    sec_agg = (df.groupby("sector_display")
-               .agg(Tenders=("tender_id","count"),
-                    Budget_Cr=("amount_cr","sum"),
-                    has_budget_count=("has_budget","sum"))
-               .reset_index()
-               .sort_values("Tenders", ascending=False))
-    sec_agg["Budget_Label"] = sec_agg["Budget_Cr"].apply(
-        lambda x: f"₹{x:,.0f} Cr" if x > 0 else "—")
+    sec_agg = _sector_agg_cached(df, len(df))
 
     fig_sec = px.bar(
         sec_agg.sort_values("Tenders"),
@@ -960,13 +1063,7 @@ with tab3:
     st.markdown('<div class="data-note">📊 Shows only the 20% of tenders that report a budget amount.</div>',
                 unsafe_allow_html=True)
 
-    treemap_df = (
-        budget_df
-        .groupby(["state","sector_display"])["amount_cr"]
-        .sum().reset_index()
-        .rename(columns={"amount_cr":"₹ Cr","sector_display":"Sector"})
-    )
-    treemap_df = treemap_df[treemap_df["₹ Cr"] > 0.01]
+    treemap_df = _treemap_data_cached(budget_df, len(budget_df))
 
     if not treemap_df.empty:
         fig_tree = px.treemap(
@@ -999,40 +1096,15 @@ with tab3:
         'Width of each flow = number of tenders (using count, not budget, for completeness).'
         '</div>', unsafe_allow_html=True)
 
-    # Group long source codes into readable names
-    def _shorten_source(s: str) -> str:
-        parts = s.split("/")
-        if len(parts) >= 2:
-            return f"{parts[-1][:14]}" if parts[-1] else parts[0][:14]
-        return s[:16]
-
-    top_src_raw  = df.groupby("source").size().nlargest(8).index.tolist()
-    top_states_sk = df.groupby("state").size().nlargest(10).index.tolist()
-    df_sk = df[df["source"].isin(top_src_raw) & df["state"].isin(top_states_sk)].copy()
-    df_sk["src_label"] = df_sk["source"].apply(_shorten_source)
-    df_sk["sec_label"]  = df_sk["sector_display"]
-
-    src_labels   = df_sk.groupby("source")["src_label"].first().reindex(top_src_raw).tolist()
-    all_secs_sk  = sorted(df_sk["sec_label"].unique().tolist())
-    node_labels  = src_labels + top_states_sk + all_secs_sk
-    node_idx     = {n: i for i, n in enumerate(node_labels)}
-    src_to_label = {src: lbl for src, lbl in zip(top_src_raw, src_labels)}
-
-    sk_links = []
-    for (src, st_), grp in df_sk.groupby(["source","state"]):
-        lbl = src_to_label.get(src, src[:14])
-        if lbl in node_idx and st_ in node_idx:
-            sk_links.append((node_idx[lbl], node_idx[st_], len(grp)))
-    for (st_, sec), grp in df_sk.groupby(["state","sec_label"]):
-        if st_ in node_idx and sec in node_idx:
-            sk_links.append((node_idx[st_], node_idx[sec], len(grp)))
-    sk_links = [(s,t,v) for s,t,v in sk_links if v > 0]
+    node_labels, sk_links, src_labels, top_states_sk, all_secs_sk = (
+        _sankey_data_cached(df, len(df))
+    )
 
     if sk_links:
         node_colors = (
             ["rgba(196,118,41,0.8)"] * len(src_labels) +
             ["rgba(123,45,66,0.7)"]  * len(top_states_sk) +
-            [SECTOR_COLORS.get(s,"#AAAAAA") for s in all_secs_sk]
+            [SECTOR_COLORS.get(s, "#AAAAAA") for s in all_secs_sk]
         )
         fig_sankey = go.Figure(go.Sankey(
             node=dict(
@@ -1198,19 +1270,7 @@ with tab4:
         'signals a data concentration risk.'
         '</div>', unsafe_allow_html=True)
 
-    # Group by top 15 + Others
-    src_vol = df.groupby("source").size().sort_values(ascending=False)
-    top15   = src_vol.head(15)
-    others_cnt = int(src_vol.iloc[15:].sum()) if len(src_vol) > 15 else 0
-
-    src_display = top15.copy()
-    if others_cnt > 0:
-        src_display["All Others"] = others_cnt
-    src_display = src_display.reset_index()
-    src_display.columns = ["Portal","Tenders"]
-    src_display["Portal_Short"] = src_display["Portal"].apply(
-        lambda s: ("All Others" if s == "All Others" else
-                   s.split("/")[-1][:18] if "/" in s else s[:18]))
+    src_display = _portal_data_cached(df, len(df))
 
     ring_col, bar_col = st.columns([1, 2])
 
