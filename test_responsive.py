@@ -26,6 +26,7 @@ Test against Streamlit Cloud deployment:
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -399,53 +400,47 @@ if __name__ == "__main__":
     print(f"Target : {APP_URL}")
     print("=" * 56)
 
+    # Auto-detect the available Chromium binary under PLAYWRIGHT_BROWSERS_PATH
+    _browsers_root = os.getenv("PLAYWRIGHT_BROWSERS_PATH", "/opt/pw-browsers")
+    _chrome_exe = None
+    for _candidate in sorted(
+        Path(_browsers_root).glob("chromium-*/chrome-linux/chrome"), reverse=True
+    ):
+        _chrome_exe = str(_candidate)
+        break
+    _launch_kwargs = {"executable_path": _chrome_exe} if _chrome_exe else {}
+
     with sync_playwright() as pw:
-        browser = pw.chromium.launch()
+        browser = pw.chromium.launch(**_launch_kwargs)
 
-        print("\n── iPhones ─────────────────────────────────────────────")
-        for name, w, h, dpr in IPHONES:
-            ctx  = browser.new_context(viewport={"width": w, "height": h},
-                                       device_scale_factor=dpr)
-            page = ctx.new_page()
-            print(f"\n  📱 {name}  ({w}×{h}  @{dpr}x)")
-            try:
-                _wait_for_app(page)
-                run_device(page, name, w)
-            except Exception as exc:
-                print(f"  ⛔ Load error: {exc}")
-                failed += 1
-            finally:
-                ctx.close()
+        # Load the app ONCE at desktop size so the server-side cache is warm,
+        # then resize the viewport for each device — CSS responds immediately.
+        print("\n  ⏳ Warming up: loading app at 1280px (this can take ~5 min on first run)…")
+        _warm_ctx  = browser.new_context(viewport={"width": 1280, "height": 800})
+        _warm_page = _warm_ctx.new_page()
+        _wait_for_app(_warm_page)
+        print("  ✅ App loaded. Running device checks…\n")
 
-        print("\n── iPads ───────────────────────────────────────────────")
-        for name, w, h, dpr in IPADS:
-            ctx  = browser.new_context(viewport={"width": w, "height": h},
-                                       device_scale_factor=dpr)
-            page = ctx.new_page()
-            print(f"\n  🖥️  {name}  ({w}×{h})")
-            try:
-                _wait_for_app(page)
-                run_device(page, name, w)
-            except Exception as exc:
-                print(f"  ⛔ Load error: {exc}")
-                failed += 1
-            finally:
-                ctx.close()
+        all_devices = (
+            [("iPhone", n, w, h, dpr) for n, w, h, dpr in IPHONES] +
+            [("iPad",   n, w, h, dpr) for n, w, h, dpr in IPADS]   +
+            [("Desktop", f"Desktop {w}×{h}", w, h, 1) for w, h in [(1280, 800), (1920, 1080)]]
+        )
 
-        print("\n── Desktop smoke ───────────────────────────────────────")
-        for w, h in [(1280, 800), (1920, 1080)]:
-            ctx  = browser.new_context(viewport={"width": w, "height": h})
-            page = ctx.new_page()
-            print(f"\n  🖥️  Desktop {w}×{h}")
-            try:
-                _wait_for_app(page)
-                run_device(page, f"Desktop {w}", w)
-            except Exception as exc:
-                print(f"  ⛔ Load error: {exc}")
-                failed += 1
-            finally:
-                ctx.close()
+        current_group = ""
+        for group, name, w, h, dpr in all_devices:
+            if group != current_group:
+                print(f"\n── {group}s {'─' * (48 - len(group))}")
+                current_group = group
 
+            # Resize the already-loaded page — no re-fetch needed.
+            _warm_page.set_viewport_size({"width": w, "height": h})
+            _warm_page.wait_for_timeout(400)   # allow CSS to reflow
+            icon = "📱" if group != "Desktop" else "🖥️ "
+            print(f"\n  {icon} {name}  ({w}×{h})")
+            run_device(_warm_page, name, w)
+
+        _warm_ctx.close()
         browser.close()
 
     print(f"\n{'─' * 56}")
