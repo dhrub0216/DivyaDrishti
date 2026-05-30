@@ -1,8 +1,33 @@
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.venv/
+venv/
+.DS_Store
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/__pycache__/
+
+# Data & Cache
 geocache.json
 tenders.json
 .env
+.env.local
 data/generated_tenders.csv
-
 tenders.db
+tenders.db-shm
+tenders.db-wal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

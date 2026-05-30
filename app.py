@@ -42,14 +42,20 @@ TAB STRUCTURE v5.0
   Tab 4 — 📄 Data & Sources  Table, CSV, portal analysis, health log
 """
 
+import difflib
 import math
+import json
+import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
+from bs4 import BeautifulSoup
 import streamlit as st
 
 from pipeline import (
@@ -67,7 +73,7 @@ from pipeline import (
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="DivyaDrishti — Procurement Intelligence",
-    page_icon="🪷",
+    page_icon="🔱👁️",
     layout="wide",
     initial_sidebar_state="auto",
 )
@@ -462,6 +468,128 @@ def _portal_data_cached(_df, _df_len):
     return disp
 
 
+# ── Web scraping & company enrichment ──────────────────────────────────────────
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_page_html(url: str) -> tuple[str, str]:
+    if not url or not isinstance(url, str):
+        return None, "No URL provided."
+    if _is_pdf_url(url):
+        return None, "PDF content is not supported for extraction."
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        resp = requests.get(url, headers=headers, timeout=20)
+        resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "")
+        if "application/pdf" in content_type.lower():
+            return None, "PDF content is not supported for extraction."
+        return resp.text, ""
+    except Exception as exc:
+        return None, str(exc)
+
+
+def extract_company_candidates(html: str) -> list[str]:
+    if not html:
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text(separator="\n")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    def normalize_candidate(candidate: str) -> str:
+        candidate = re.sub(r"\s{2,}", " ", candidate.strip())
+        candidate = re.sub(r"^['\"\(\[]+|['\"\)\]]+$", "", candidate)
+        candidate = re.sub(r"\s+\|\s+", " ", candidate)
+        candidate = re.sub(r"(?:\b(?:the|ltd|pvt|private|limited|llp|corp|inc|co)\b)\.?$", "", candidate, flags=re.I)
+        return candidate.strip()
+
+    def add_candidate(candidate: str, allow_long: bool = False):
+        candidate = normalize_candidate(candidate)
+        if not candidate:
+            return
+        if 3 <= len(candidate) <= (180 if allow_long else 120):
+            candidates.append(candidate)
+
+    candidates = []
+    label_patterns = [
+        r"(?:contractor name|name of contractor|name of awardee|awardee name|vendor name|bidder name|supplier name)[:\-\s]+(.+)$",
+        r"(?:contractor|awardee|vendor|bidder|supplier|agency|seller|department)[:\-\s]+(.+)$",
+        r"(?:awarded to|award to|contract awarded to|successfully awarded to|bidder is|supplier is)[:\-\s]+(.+)$",
+    ]
+    table_labels = [
+        "contractor", "awardee", "vendor", "bidder", "supplier", "agency", "seller",
+        "contract awarded to", "awarded to", "name of contractor", "name of awardee",
+    ]
+
+    for line in lines:
+        for pat in label_patterns:
+            match = re.search(pat, line, re.I)
+            if match:
+                add_candidate(match.group(1))
+
+    for tr in soup.find_all("tr"):
+        cells = [cell.get_text(" ", strip=True) for cell in tr.find_all(["th", "td"])]
+        if len(cells) < 2:
+            continue
+        for idx, cell in enumerate(cells[:-1]):
+            if any(re.search(fr"\b{re.escape(lbl)}\b", cell, re.I) for lbl in table_labels):
+                add_candidate(cells[idx + 1], allow_long=True)
+
+    for label in table_labels:
+        for tag in soup.find_all(text=re.compile(fr"{re.escape(label)}", re.I)):
+            parent = tag.parent
+            if parent and parent.name in {"p", "li", "div", "span"}:
+                text_line = parent.get_text(" ", strip=True)
+                match = re.search(fr"{re.escape(label)}[:\-\s]+(.+)$", text_line, re.I)
+                if match:
+                    add_candidate(match.group(1))
+
+    for script in soup.find_all("script", type="application/ld+json"):
+        payload = script.string or ""
+        try:
+            data = json.loads(payload)
+        except Exception:
+            continue
+        def walk_json(obj):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    if key.lower() in {"name", "contractor", "vendor", "supplier", "awardee", "seller", "bidder", "organization"}:
+                        if isinstance(value, str):
+                            add_candidate(value, allow_long=True)
+                    walk_json(value)
+            elif isinstance(obj, list):
+                for item in obj:
+                    walk_json(item)
+        walk_json(data)
+
+    if soup.title and soup.title.string:
+        add_candidate(soup.title.string, allow_long=True)
+
+    seen = set()
+    unique = []
+    for cand in candidates:
+        if cand not in seen:
+            seen.add(cand)
+            unique.append(cand)
+    return unique[:25]
+
+
+def _is_pdf_url(url: str) -> bool:
+    return isinstance(url, str) and url.lower().endswith(".pdf")
+
+
+def _url_host(url: str) -> str:
+    try:
+        return urlparse(url).netloc
+    except Exception:
+        return ""
+
+
+
 with st.spinner("🔄 Loading enterprise tender database…"):
     df_master = get_data()
     hierarchy  = get_hierarchy(df_master)
@@ -707,11 +835,12 @@ if df.empty:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TABS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🌐 Overview",
     "📍 State Explorer",
     "📊 Sector & Trends",
     "📄 Data & Sources",
+    "🏢 Tender Company Overview",
 ])
 
 
@@ -1021,6 +1150,247 @@ with tab2:
             st.plotly_chart(fig_dist, use_container_width=True)
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TAB 5 · TENDER COMPANY OVERVIEW
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+with tab5:
+
+    st.markdown('<div class="section-label">🏢 Tender Company Overview</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-desc">'
+        'Explore contractors by number of awarded/assigned tenders, total contract value, and linked tender details. '
+        'Select a company to see their tenders, sector mix, timeline and map of work sites.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    df_comp = df.copy()
+    df_comp['contractor_raw'] = df_comp['contractor_name'].fillna('').astype(str).str.strip()
+    df_comp['source_url_clean'] = df_comp['source_url'].fillna('').astype(str).str.strip()
+
+    awarded_only = st.checkbox(
+        'Only Awarded Contractors',
+        value=False,
+        help='Show only contractors with at least one Awarded tender in this view.',
+    )
+    if awarded_only:
+        df_comp = df_comp[df_comp['status'] == 'Awarded']
+
+    has_contractors = df_comp['contractor_raw'].ne('').any()
+    source_url_df = df_comp[df_comp['source_url_clean'] != ''].copy()
+
+    if has_contractors:
+        def _normalize_company(name: str) -> str:
+            s = (name or '').strip()
+            if not s:
+                return ''
+            low = s.lower()
+            if low in {'none', 'unknown', 'na', 'n/a', '-', 'nil'}:
+                return ''
+            low = low.replace('&', ' and ')
+            low = re.sub(r'[^a-z0-9\s]', ' ', low)
+            for suf in [' pvt ltd', ' pvt. ltd', ' private limited', ' ltd', ' ltd.', ' llp', ' co', ' co.', ' company', ' corporation', ' inc', ' inc.']:
+                if low.endswith(suf):
+                    low = low[:-len(suf)]
+            return re.sub(r'\s+', ' ', low).strip()
+
+        df_comp['contractor_norm'] = df_comp['contractor_raw'].apply(_normalize_company)
+
+        def _make_fuzzy_groups(names):
+            leaders = []
+            group = {}
+            for name in sorted(names, key=lambda x: (-len(x), x)):
+                if not name:
+                    continue
+                match = difflib.get_close_matches(name, leaders, n=1, cutoff=0.92)
+                if match:
+                    group[name] = match[0]
+                else:
+                    leaders.append(name)
+                    group[name] = name
+            return group
+
+        norm_names = df_comp['contractor_norm'].dropna().unique().tolist()
+        norm_to_group = _make_fuzzy_groups(norm_names)
+        df_comp['contractor_group'] = df_comp['contractor_norm'].map(norm_to_group).fillna('')
+
+        comp_agg = (
+            df_comp[df_comp['contractor_group'] != '']
+            .groupby('contractor_group', observed=True)
+            .agg(
+                Tenders=('tender_id', 'count'),
+                Budget_Cr=('amount_cr', 'sum'),
+                Awarded=('status', lambda x: int((x == 'Awarded').sum())),
+                display_name=('contractor_raw', lambda x: x.mode().iloc[0] if len(x) else ''),
+                Raw_Names=('contractor_raw', lambda x: ', '.join(sorted(set(x))[:5]))
+            )
+            .reset_index()
+            .sort_values('Tenders', ascending=False)
+        )
+
+        top_comps = comp_agg.head(20).copy()
+        top_comps['label'] = top_comps.apply(lambda row: f"{row['display_name']} ({row['Tenders']:,} tenders)", axis=1)
+
+        if not top_comps.empty:
+            fig_comp = px.bar(
+                top_comps.sort_values('Tenders'),
+                x='Tenders', y='label', orientation='h',
+                color='Budget_Cr', color_continuous_scale=['#D4EAF7','#0E8C8C','#0D1B2A'],
+                hover_data={'Budget_Cr':':.1f','Awarded':True},
+                labels={'label':'Contractor','Budget_Cr':'Budget (₹ Cr)'},
+                height=520,
+            )
+            fig_comp.update_traces(texttemplate='%{x:,}', textposition='outside')
+            fig_comp.update_layout(margin=dict(t=8,b=8,l=8,r=60), showlegend=False)
+            st.plotly_chart(fig_comp, use_container_width=True)
+
+        st.markdown('---')
+
+        comp_options = ['All'] + top_comps['label'].tolist()
+        selected_comp_label = st.selectbox('Select Contractor', comp_options)
+        selected_comp = '' if selected_comp_label == 'All' else top_comps.loc[top_comps['label'] == selected_comp_label, 'contractor_group'].iloc[0]
+
+        with st.expander('Raw → Normalized Contractor Preview', expanded=False):
+            preview = (
+                df_comp[df_comp['contractor_group'] != '']
+                .groupby(['contractor_group', 'contractor_norm'], observed=True)
+                .agg(
+                    Tenders=('tender_id', 'count'),
+                    Sample_Raw_Names=('contractor_raw', lambda x: ', '.join(sorted(set(x))[:5]))
+                )
+                .reset_index()
+                .sort_values(['Tenders', 'contractor_group'], ascending=[False, True])
+                .head(30)
+            )
+            st.dataframe(
+                preview.rename(columns={
+                    'contractor_group': 'Group',
+                    'contractor_norm': 'Normalized',
+                    'Tenders': 'Tender Count',
+                    'Sample_Raw_Names': 'Sample Raw Names',
+                }),
+                use_container_width=True,
+            )
+
+        if selected_comp == '':
+            st.info('Select a contractor to inspect their tenders and metrics.')
+        else:
+            cdf = df_comp[df_comp['contractor_group'] == selected_comp].copy()
+            tot_budget = cdf['amount_cr'].sum()
+            awarded = int((cdf['status'] == 'Awarded').sum())
+            top_sectors = ', '.join(cdf['sector_display'].value_counts().head(3).index.tolist())
+
+            sc1, sc2, sc3, sc4 = st.columns(4)
+            sc1.metric('🏷️ Contractor', selected_comp_label)
+            sc2.metric('📋 Tenders', f'{len(cdf):,}')
+            sc3.metric('💰 Total Budget (₹ Cr)', f'{tot_budget:,.2f}')
+            sc4.metric('🏅 Awarded', f'{awarded:,}')
+
+            st.markdown(f'**Top Sectors:** {top_sectors}')
+            st.markdown('<div style="margin:6px 0"></div>', unsafe_allow_html=True)
+
+            if cdf.empty:
+                st.write('No tenders found for this contractor.')
+            else:
+                rows = [
+                    '| Tender ID | Title | State | Status | Budget (₹ Cr) | Source URL |',
+                    '|---|---|---|---:|---:|---|',
+                ]
+                for _, r in cdf.sort_values('scraped_at', ascending=False).iterrows():
+                    tid = (r['tender_id'] or '')[:60]
+                    title = (r['title'] or '')[:100].replace('|', '\|')
+                    state = r.get('state','') or ''
+                    status = r.get('status','') or ''
+                    amt = f"{r.get('amount_cr',0):,.2f}" if r.get('amount_cr',0) else '—'
+                    url = r.get('source_url','') or r.get('source','') or ''
+                    rows.append(f'| {tid} | [{title}]({url}) | {state} | {status} | {amt} | {url} |')
+                st.markdown('\n'.join(rows), unsafe_allow_html=True)
+
+            st.markdown('---')
+            col1, col2 = st.columns(2)
+            with col1:
+                sec_counts = cdf['sector_display'].value_counts().reset_index()
+                sec_counts.columns = ['Sector','Count']
+                if not sec_counts.empty:
+                    fig_p = px.pie(sec_counts, names='Sector', values='Count', height=360,
+                                  color_discrete_map={**SECTOR_COLORS, 'Unclassified':'#AAAAAA'})
+                    st.plotly_chart(fig_p, width='stretch')
+            with col2:
+                dates = cdf['start_date'].fillna(cdf['scraped_at']).dropna().astype(str)
+                years = dates.str.slice(0,4)
+                tl = years.value_counts().sort_index()
+                if not tl.empty:
+                    tl_df = tl.reset_index()
+                    tl_df.columns = ['Year','Tenders']
+                    fig_t = px.bar(tl_df, x='Year', y='Tenders', height=360)
+                    st.plotly_chart(fig_t, width='stretch')
+
+            map_df = cdf[(cdf['latitude'].notna()) & (cdf['longitude'].notna())].copy()
+            if not map_df.empty:
+                fig_map_c = px.scatter_mapbox(
+                    map_df, lat='latitude', lon='longitude', hover_name='title',
+                    color='sector_display', size_max=12, height=420,
+                    color_discrete_map={**SECTOR_COLORS, 'Unclassified':'#AAAAAA'},
+                    hover_data={'state':True,'amount_cr':':.2f'}
+                )
+                fig_map_c.update_layout(mapbox_style='open-street-map', margin=dict(t=0,b=0,l=0,r=0))
+                st.plotly_chart(fig_map_c, width='stretch')
+
+    else:
+        st.warning(
+            'No contractor names are present in the current dataset. '
+            'We can still probe the original tender source pages to infer contractor details.'
+        )
+        st.markdown(
+            '<div class="data-note">' +
+            f'📌 {len(source_url_df):,} tender records include a source URL for enrichment.' +
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        if source_url_df.empty:
+            st.error('No source URLs are available to infer contractor information.')
+        else:
+            host_counts = source_url_df['source_url_clean'].apply(_url_host).value_counts().head(12)
+            st.markdown('**Top source hosts available for enquiry**')
+            st.dataframe(
+                pd.DataFrame({'Host': host_counts.index, 'Tenders': host_counts.values}),
+                use_container_width=True,
+            )
+            st.markdown('---')
+            sample_candidates = source_url_df.sort_values('source').head(120).copy()
+            sample_candidates['label'] = sample_candidates.apply(
+                lambda r: f"{r['tender_id']} | {r['source']} | {r['title'][:60]}", axis=1
+            )
+            selected_index = st.selectbox(
+                'Inspect a tender source page and extract company candidates',
+                [None] + sample_candidates.index.tolist(),
+                format_func=lambda idx: sample_candidates.loc[idx, 'label'] if idx is not None else 'Choose a tender',
+            )
+            if selected_index is not None:
+                selected_row = sample_candidates.loc[selected_index]
+                st.markdown(f"**Tender:** {selected_row['tender_id']} — {selected_row['source']}")
+                st.markdown(f"**Status:** {selected_row['status']}  ")
+                st.markdown(f"**Source URL:** {selected_row['source_url_clean']}")
+                if _is_pdf_url(selected_row['source_url_clean']):
+                    st.info('This source URL points to a PDF. PDF contractor extraction is not yet supported.')
+                else:
+                    if st.button('Fetch company candidates from source page'):
+                        html, error = fetch_page_html(selected_row['source_url_clean'])
+                        if error:
+                            st.error(f'Unable to fetch page: {error}')
+                        else:
+                            candidates = extract_company_candidates(html)
+                            if candidates:
+                                st.markdown('**Candidate company names found on the page:**')
+                                for cand in candidates:
+                                    st.markdown(f'- {cand}')
+                            else:
+                                st.info('No obvious contractor text patterns were detected on this page.')
+            st.markdown('---')
+            st.markdown(
+                'If you have a company name from another source, use it to search outside this dashboard. '
+                'The page extraction above is a best-effort attempt to infer contractors from tender source pages.'
+            )
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TAB 3 · SECTOR & TRENDS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
