@@ -890,14 +890,13 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
 
     # ── KPI Strip ─────────────────────────────────────────────────────────────
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total Tenders",   f"{total_count:,}")
     c2.metric("Active",          f"{active_count:,}")
-    c3.metric("Awarded",         f"{awarded_count:,}")
-    c4.metric("States Covered",  f"{state_count}")
-    c5.metric("Sectors",         f"{sector_count}")
+    c3.metric("States Covered",  f"{state_count}")
+    c4.metric("Sectors",         f"{sector_count}")
     _cov_delta = f"{budget_coverage:,} tenders"
-    c6.metric("Budget Coverage", f"{budget_pct:.0f}%", delta=_cov_delta, delta_color="off")
+    c5.metric("Budget Coverage", f"{budget_pct:.0f}%", delta=_cov_delta, delta_color="off")
 
     st.markdown("<div style='margin:8px 0'></div>", unsafe_allow_html=True)
 
