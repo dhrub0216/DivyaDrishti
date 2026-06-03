@@ -79,6 +79,14 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
+# ── Logo ───────────────────────────────────────────────────────────────────────
+_logo_path = Path(__file__).parent / "assets" / "logo_eye.svg"
+_logo_svg  = _logo_path.read_text() if _logo_path.exists() else ""
+
+def _logo(size: int = 56) -> str:
+    """Return the eye logo SVG with explicit width/height for inline embedding."""
+    return _logo_svg.replace("<svg ", f'<svg width="{size}" height="{size}" ', 1)
+
 # ── Constants ──────────────────────────────────────────────────────────────────
 ALL               = "All"
 SCATTER_LIMIT     = 5_000
@@ -623,8 +631,11 @@ all_sectors_ordered = _classified + _unclassified
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
+    st.markdown(f"""
     <div style="padding:14px 0 10px 0;text-align:center;">
+      <div style="display:flex;justify-content:center;margin-bottom:8px;">
+        {_logo(42)}
+      </div>
       <div style="font-family:'Rajdhani',sans-serif;font-size:1.6rem;font-weight:700;
                   background:linear-gradient(135deg,#E8981E,#0E8C8C);
                   -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
@@ -850,13 +861,18 @@ narrative_html = build_narrative(df, drill_level, selected_state, selected_distr
 # ── PAGE HEADER ────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="divya-header">
-  <div>
-    <div class="divya-title">
-      <span style="color:#E8981E;">Divya</span><span style="color:#0D1B2A;">Drishti</span>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="flex-shrink:0;line-height:0;">
+      {_logo(58)}
     </div>
-    <div style="font-size:.78rem;color:#0E8C8C;letter-spacing:2px;">दिव्यदृष्टि</div>
-    <div style="font-size:.73rem;color:#3A5068;margin-top:2px;">
-      Pan-India Procurement Intelligence · {df_master["state"].nunique()} States/UTs · {len(df_master):,} Tenders
+    <div>
+      <div class="divya-title">
+        <span style="color:#E8981E;">Divya</span><span style="color:#0D1B2A;">Drishti</span>
+      </div>
+      <div style="font-size:.78rem;color:#0E8C8C;letter-spacing:2px;">दिव्यदृष्टि</div>
+      <div style="font-size:.73rem;color:#3A5068;margin-top:2px;">
+        Pan-India Procurement Intelligence · {df_master["state"].nunique()} States/UTs · {len(df_master):,} Tenders
+      </div>
     </div>
   </div>
   <div class="divya-badge-wrap">

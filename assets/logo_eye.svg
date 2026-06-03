@@ -1,0 +1,29 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Eye background fill -->
+  <path d="M 10 60 Q 60 8 110 60 Q 60 112 10 60 Z" fill="#EBF8F8"/>
+  <!-- Iris background -->
+  <circle cx="60" cy="60" r="24" fill="#FEF3E2"/>
+  <!-- Iris ring -->
+  <circle cx="60" cy="60" r="24" stroke="#E8981E" stroke-width="2.8" fill="none"/>
+  <!-- 8 data tick marks straddling iris (r-6 to r+6) -->
+  <g stroke="#E8981E" stroke-width="2.2" stroke-linecap="round">
+    <!-- top -->        <line x1="60"  y1="42"  x2="60"  y2="30" />
+    <!-- top-right -->  <line x1="73"  y1="47"  x2="81"  y2="39" />
+    <!-- right -->      <line x1="78"  y1="60"  x2="90"  y2="60" />
+    <!-- bot-right -->  <line x1="73"  y1="73"  x2="81"  y2="81" />
+    <!-- bottom -->     <line x1="60"  y1="78"  x2="60"  y2="90" />
+    <!-- bot-left -->   <line x1="47"  y1="73"  x2="39"  y2="81" />
+    <!-- left -->       <line x1="42"  y1="60"  x2="30"  y2="60" />
+    <!-- top-left -->   <line x1="47"  y1="47"  x2="39"  y2="39" />
+  </g>
+  <!-- Pupil -->
+  <circle cx="60" cy="60" r="11" fill="#0D1B2A"/>
+  <!-- Glint -->
+  <circle cx="65" cy="55" r="4.5" fill="white" opacity="0.88"/>
+  <!-- Eyelids drawn on top -->
+  <path d="M 10 60 Q 60 8 110 60"  stroke="#0E8C8C" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+  <path d="M 10 60 Q 60 112 110 60" stroke="#0E8C8C" stroke-width="2.2" fill="none" stroke-linecap="round" opacity="0.65"/>
+  <!-- Corner accent dots -->
+  <circle cx="10"  cy="60" r="4" fill="#0E8C8C"/>
+  <circle cx="110" cy="60" r="4" fill="#0E8C8C"/>
+</svg>
