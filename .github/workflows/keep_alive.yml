@@ -1,0 +1,15 @@
+name: Keep App Alive
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch:          # allow manual trigger from GitHub Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake up Streamlit app
+        run: |
+          curl -s -o /dev/null -w "HTTP %{http_code}" \
+            https://dhrub0216-divyadrishti-app-3bdjsg.streamlit.app

@@ -36,10 +36,10 @@ FIX-09  Timeline axis fixed to show only real date range (not 1970s
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TAB STRUCTURE v5.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Tab 1 — 🌐 Overview       KPIs, spotlights, narrative, map
-  Tab 2 — 📍 State Explorer  State comparison, sector×state heatmap
-  Tab 3 — 📊 Sector & Trends Treemap, sankey, sector bar, timeline, leaderboards
-  Tab 4 — 📄 Data & Sources  Table, CSV, portal analysis, health log
+  Tab 1 — Overview       KPIs, spotlights, narrative, map
+  Tab 2 — State Explorer  State comparison, sector×state heatmap
+  Tab 3 — Sector & Trends Treemap, sankey, sector bar, timeline, leaderboards
+  Tab 4 — Data & Sources  Table, CSV, portal analysis, health log
 """
 
 import difflib
@@ -49,6 +49,7 @@ import re
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
+import sqlite3
 
 import numpy as np
 import pandas as pd
@@ -73,7 +74,7 @@ from pipeline import (
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="DivyaDrishti — Procurement Intelligence",
-    page_icon="🔱👁️",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="auto",
 )
@@ -305,7 +306,7 @@ def get_data() -> pd.DataFrame:
     for col in ["sector", "state", "district", "department", "source",
                 "status", "contractor_name", "block", "title"]:
         if col in raw.columns:
-            raw[col] = raw[col].astype(str).replace("nan", "")
+            raw[col] = raw[col].astype(str).replace(["nan", "None"], "")
     # DB has mixed units — normalise everything to Crores for display
     def _to_crores(x):
         if x is None or x != x or x == 0:  return 0.0       # None / NaN / zero
@@ -589,8 +590,28 @@ def _url_host(url: str) -> str:
         return ""
 
 
+def _persist_contractor_name(tender_id: str, contractor_name: str) -> tuple[bool, str]:
+    if not tender_id or not contractor_name:
+        return False, "Tender ID and contractor name are both required."
+    try:
+        from repository.db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE tenders SET contractor_name = ? WHERE tender_id = ?",
+            (contractor_name.strip(), tender_id.strip()),
+        )
+        conn.commit()
+        updated = cursor.rowcount
+        conn.close()
+        if updated == 0:
+            return False, f"No tender row updated for {tender_id}."
+        return True, "Contractor name saved successfully."
+    except Exception as exc:
+        return False, str(exc)
 
-with st.spinner("🔄 Loading enterprise tender database…"):
+
+with st.spinner("Loading tender database…"):
     df_master = get_data()
     hierarchy  = get_hierarchy(df_master)
 
@@ -607,7 +628,7 @@ with st.sidebar:
       <div style="font-family:'Rajdhani',sans-serif;font-size:1.6rem;font-weight:700;
                   background:linear-gradient(135deg,#E8981E,#0E8C8C);
                   -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
-        🪷 DivyaDrishti
+        DivyaDrishti
       </div>
       <div style="font-size:.68rem;letter-spacing:3px;color:#7AB8D8;margin-top:3px;">
         PROCUREMENT INTELLIGENCE
@@ -623,12 +644,12 @@ with st.sidebar:
     st.markdown("---")
 
     # ── Search ─────────────────────────────────────────────────────────────────
-    st.markdown("#### 🔍 Keyword Search")
+    st.markdown("#### Keyword Search")
     search_query = st.text_input("Search", placeholder="road, hospital, school…",
                                  label_visibility="collapsed")
 
     st.markdown("---")
-    st.markdown("#### 📊 Drill-Down Filters")
+    st.markdown("#### Drill-Down Filters")
 
     # Sector filter uses display name (classified / Unclassified)
     selected_sector_display = st.selectbox("Sector", [ALL] + all_sectors_ordered)
@@ -662,7 +683,7 @@ with st.sidebar:
     selected_block = st.selectbox("Block / Taluka", block_options)
 
     st.markdown("---")
-    st.markdown("#### ⚙️ Additional Filters")
+    st.markdown("#### Additional Filters")
 
     all_statuses      = sorted(df_master["status"].dropna().unique().tolist())
     selected_statuses = st.multiselect("Status", all_statuses, default=all_statuses)
@@ -672,14 +693,14 @@ with st.sidebar:
 
     st.markdown("---")
 
-    with st.expander("🛠️ Developer Tools", expanded=False):
+    with st.expander("Developer Tools", expanded=False):
         try:
             from repository.db import DB_PATH
             _cnt = __import__("sqlite3").connect(DB_PATH).execute(
                 "SELECT COUNT(*) FROM tenders").fetchone()[0]
-            st.success(f"📡 Real DB — {_cnt:,} scraped tenders")
+            st.success(f"Real DB — {_cnt:,} scraped tenders")
         except Exception:
-            st.warning("🧪 Preview mode — seed data.")
+            st.warning("Preview mode — seed data.")
 
         st.markdown("**▶ Run Scraper**")
         _sources = st.multiselect(
@@ -689,33 +710,53 @@ with st.sidebar:
             default=["biharv2","cgstate"],
         )
         _pages   = st.number_input("Pages per portal", 1, 200, 10)
-        _api_key = st.text_input("data.gov.in API Key", type="password", placeholder="Optional")
+        # Prefer a key stored in Streamlit secrets over typing it each run.
+        secrets_api_key = ""
+        try:
+            # Supported secret shapes: [data_gov] api_key = "..."  OR  data_gov_api_key = "..."
+            secrets_api_key = (
+                (st.secrets.get("data_gov", {}) or {}).get("api_key")
+                or st.secrets.get("data_gov_api_key", "")
+                or st.secrets.get("datagov_api_key", "")
+            )
+        except Exception:
+            secrets_api_key = ""
+
+        _api_key = st.text_input(
+            "data.gov.in API Key",
+            type="password",
+            placeholder="Optional",
+            value=secrets_api_key,
+            help="Optional: store your key in .streamlit/secrets.toml as [data_gov] api_key = \"...\"",
+        )
         if st.button("▶ Start Scraping", type="primary", use_container_width=True):
             import subprocess
             cmd = [sys.executable, str(Path(__file__).parent / "cli.py"),
                    "--sources"] + _sources + ["--pages", str(_pages)]
-            if _api_key:
-                cmd += ["--api-key", _api_key]
+            # prefer typed API key, fall back to secrets_api_key
+            key_to_use = _api_key or secrets_api_key
+            if key_to_use:
+                cmd += ["--api-key", key_to_use]
             with st.spinner("Scraping live portals…"):
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
                 if result.returncode == 0:
-                    st.success("✅ Complete")
+                    st.success("Complete")
                     st.cache_data.clear(); st.rerun()
                 else:
                     st.error("Scraper error")
                     st.code((result.stderr or result.stdout)[-2000:])
 
-        if st.button("🔄 Refresh Display", use_container_width=True):
+        if st.button("Refresh Display", use_container_width=True):
             st.cache_data.clear(); st.rerun()
-        if st.button("🔍 Reclassify DB", use_container_width=True):
+        if st.button("Reclassify DB", use_container_width=True):
             import subprocess
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).parent / "cli.py"), "--reclassify"],
                 capture_output=True, text=True, timeout=300)
-            st.success("✅ Done") if result.returncode == 0 else st.error("Failed")
+            st.success("Done") if result.returncode == 0 else st.error("Failed")
             st.cache_data.clear(); st.rerun()
 
-    with st.expander("📡 Portal Health", expanded=False):
+    with st.expander("Portal Health", expanded=False):
         try:
             _health = load_health_log()
             if _health is not None and not _health.empty:
@@ -745,10 +786,10 @@ df = _apply_filters_cached(
 )
 
 # ── Drill level ────────────────────────────────────────────────────────────────
-if   selected_state    == ALL: drill_level, level_label = "national", "🌏 National — All States"
-elif selected_district == ALL: drill_level, level_label = "state",    f"📍 {selected_state}"
-elif selected_block    == ALL: drill_level, level_label = "district",  f"🏙️ {selected_district}, {selected_state}"
-else:                          drill_level, level_label = "block",     f"🔍 {selected_block}, {selected_district}"
+if   selected_state    == ALL: drill_level, level_label = "national", "National — All States"
+elif selected_district == ALL: drill_level, level_label = "state",    f"{selected_state}"
+elif selected_block    == ALL: drill_level, level_label = "district",  f"{selected_district}, {selected_state}"
+else:                          drill_level, level_label = "block",     f"{selected_block}, {selected_district}"
 
 render_mode = "scatter" if len(df) <= SCATTER_LIMIT else "aggregated"
 
@@ -809,7 +850,6 @@ narrative_html = build_narrative(df, drill_level, selected_state, selected_distr
 # ── PAGE HEADER ────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="divya-header">
-  <div class="divya-logo">🪷</div>
   <div>
     <div class="divya-title">
       <span style="color:#E8981E;">Divya</span><span style="color:#0D1B2A;">Drishti</span>
@@ -828,7 +868,7 @@ st.markdown(f"""
 st.markdown("<div style='margin:4px 0'></div>", unsafe_allow_html=True)
 
 if df.empty:
-    st.warning("⚠️ No tenders match the current filter combination.")
+    st.warning("No tenders match the current filter combination.")
     st.stop()
 
 
@@ -836,11 +876,11 @@ if df.empty:
 # TABS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🌐 Overview",
-    "📍 State Explorer",
-    "📊 Sector & Trends",
-    "📄 Data & Sources",
-    "🏢 Tender Company Overview",
+    "Overview",
+    "State Explorer",
+    "Sector & Trends",
+    "Data & Sources",
+    "Company Overview",
 ])
 
 
@@ -851,13 +891,13 @@ with tab1:
 
     # ── KPI Strip ─────────────────────────────────────────────────────────────
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("📋 Total Tenders",   f"{total_count:,}")
-    c2.metric("✅ Active",          f"{active_count:,}")
-    c3.metric("🏅 Awarded",         f"{awarded_count:,}")
-    c4.metric("🗺️ States Covered",  f"{state_count}")
-    c5.metric("📂 Sectors",         f"{sector_count}")
+    c1.metric("Total Tenders",   f"{total_count:,}")
+    c2.metric("Active",          f"{active_count:,}")
+    c3.metric("Awarded",         f"{awarded_count:,}")
+    c4.metric("States Covered",  f"{state_count}")
+    c5.metric("Sectors",         f"{sector_count}")
     _cov_delta = f"{budget_coverage:,} tenders"
-    c6.metric("💰 Budget Coverage", f"{budget_pct:.0f}%", delta=_cov_delta, delta_color="off")
+    c6.metric("Budget Coverage", f"{budget_pct:.0f}%", delta=_cov_delta, delta_color="off")
 
     st.markdown("<div style='margin:8px 0'></div>", unsafe_allow_html=True)
 
@@ -875,25 +915,21 @@ with tab1:
     st.markdown(f"""
     <div class="spotlight-grid">
       <div class="spotlight">
-        <span class="spotlight-icon">🏆</span>
         <span class="spotlight-val">{str(top_state_by_cnt)[:16]}</span>
         <div class="spotlight-lbl">Top State</div>
         <div class="spotlight-desc">{top_state_cnt:,} tenders — most active<br>procurement geography</div>
       </div>
       <div class="spotlight">
-        <span class="spotlight-icon">🔥</span>
         <span class="spotlight-val">{str(top_sector_by_cnt)[:18]}</span>
-        <div class="spotlight-lbl">Hottest Sector</div>
+        <div class="spotlight-lbl">Leading Sector</div>
         <div class="spotlight-desc">{top_sector_cnt_val:,} tenders — highest<br>volume in current view</div>
       </div>
       <div class="spotlight">
-        <span class="spotlight-icon">💎</span>
         <span class="spotlight-val">₹{top_budget_cr:,.1f} Cr</span>
-        <div class="spotlight-lbl">Biggest Tender</div>
+        <div class="spotlight-lbl">Largest Tender</div>
         <div class="spotlight-desc">{big_tender_title}</div>
       </div>
       <div class="spotlight">
-        <span class="spotlight-icon">🔌</span>
         <span class="spotlight-val">{top_portal_short}</span>
         <div class="spotlight-lbl">Most Active Portal</div>
         <div class="spotlight-desc">{top_portal_cnt:,} tenders —<br>highest-volume gateway</div>
@@ -904,7 +940,7 @@ with tab1:
     # ── Narrative ─────────────────────────────────────────────────────────────
     st.markdown(f"""
     <div class="insight-card">
-      <h4>🧠 Procurement Intelligence Briefing</h4>
+      <h4>Procurement Intelligence Briefing</h4>
       <p>{narrative_html}</p>
     </div>
     """, unsafe_allow_html=True)
@@ -912,7 +948,7 @@ with tab1:
     st.markdown("<div style='margin:4px 0'></div>", unsafe_allow_html=True)
 
     # ── Map ───────────────────────────────────────────────────────────────────
-    st.markdown('<div class="section-label">🗺️ Procurement Geography Map</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Procurement Geography Map</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">Every dot is a tender. Colour = sector. '
         'Roads and pipelines draw as coloured lines. '
@@ -930,7 +966,7 @@ with tab1:
     with map_col:
         if render_mode == "aggregated":
             st.markdown(
-                '<div class="agg-warn">⚡ Aggregated view — narrow filters to enter scatter mode.</div>',
+                '<div class="agg-warn">Aggregated view — narrow filters to enter scatter mode.</div>',
                 unsafe_allow_html=True)
             agg_col = "state" if drill_level in ("national","state") else "district"
             agg_df  = server_side_aggregate(df, agg_col)
@@ -1011,7 +1047,7 @@ with tab1:
         st.plotly_chart(fig_map, use_container_width=True)
 
     with info_col:
-        st.markdown("#### 📌 View Info")
+        st.markdown("#### View Info")
         st.markdown(f"**Mode:** `{render_mode}`")
         st.markdown(f"**Records:** `{total_count:,}`")
         st.markdown("---")
@@ -1045,7 +1081,7 @@ with tab1:
 with tab2:
 
     # ── State Comparison Bar ───────────────────────────────────────────────────
-    st.markdown('<div class="section-label">🏛️ State Comparison — Tender Volume</div>',
+    st.markdown('<div class="section-label">State Comparison — Tender Volume</div>',
                 unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
@@ -1079,7 +1115,7 @@ with tab2:
 
     # ── Sector × State Activity Heatmap ───────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-label">🌡️ Sector × State Activity Heatmap</div>',
+    st.markdown('<div class="section-label">Sector × State Activity Heatmap</div>',
                 unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
@@ -1088,7 +1124,7 @@ with tab2:
         'Primary metric is <b>tender count</b> — more reliable than budget '
         'since 80% of tenders do not report a budget amount.'
         '</div>', unsafe_allow_html=True)
-    st.markdown('<div class="data-note">📊 Count-based (not budget) — budget data available for only 20% of tenders.</div>',
+    st.markdown('<div class="data-note">Count-based (not budget) — budget data available for only 20% of tenders.</div>',
                 unsafe_allow_html=True)
 
     hm_df = _heatmap_data_cached(df, len(df))
@@ -1122,7 +1158,7 @@ with tab2:
     # ── Top Districts (within selected state) ──────────────────────────────────
     if selected_state != ALL:
         st.markdown("---")
-        st.markdown(f'<div class="section-label">📍 Top Districts in {selected_state}</div>',
+        st.markdown(f'<div class="section-label">Top Districts in {selected_state}</div>',
                     unsafe_allow_html=True)
         dist_agg = (df[df["state"] == selected_state]
                     .groupby("district")
@@ -1155,7 +1191,7 @@ with tab2:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with tab5:
 
-    st.markdown('<div class="section-label">🏢 Tender Company Overview</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Tender Company Overview</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
         'Explore contractors by number of awarded/assigned tenders, total contract value, and linked tender details. '
@@ -1281,10 +1317,10 @@ with tab5:
             top_sectors = ', '.join(cdf['sector_display'].value_counts().head(3).index.tolist())
 
             sc1, sc2, sc3, sc4 = st.columns(4)
-            sc1.metric('🏷️ Contractor', selected_comp_label)
-            sc2.metric('📋 Tenders', f'{len(cdf):,}')
-            sc3.metric('💰 Total Budget (₹ Cr)', f'{tot_budget:,.2f}')
-            sc4.metric('🏅 Awarded', f'{awarded:,}')
+            sc1.metric('Contractor', selected_comp_label)
+            sc2.metric('Tenders', f'{len(cdf):,}')
+            sc3.metric('Total Budget (₹ Cr)', f'{tot_budget:,.2f}')
+            sc4.metric('Awarded', f'{awarded:,}')
 
             st.markdown(f'**Top Sectors:** {top_sectors}')
             st.markdown('<div style="margin:6px 0"></div>', unsafe_allow_html=True)
@@ -1298,7 +1334,7 @@ with tab5:
                 ]
                 for _, r in cdf.sort_values('scraped_at', ascending=False).iterrows():
                     tid = (r['tender_id'] or '')[:60]
-                    title = (r['title'] or '')[:100].replace('|', '\|')
+                    title = (r['title'] or '')[:100].replace('|', r'\|')
                     state = r.get('state','') or ''
                     status = r.get('status','') or ''
                     amt = f"{r.get('amount_cr',0):,.2f}" if r.get('amount_cr',0) else '—'
@@ -1343,7 +1379,7 @@ with tab5:
         )
         st.markdown(
             '<div class="data-note">' +
-            f'📌 {len(source_url_df):,} tender records include a source URL for enrichment.' +
+            f'{len(source_url_df):,} tender records include a source URL for enrichment.' +
             '</div>',
             unsafe_allow_html=True,
         )
@@ -1352,12 +1388,40 @@ with tab5:
         else:
             host_counts = source_url_df['source_url_clean'].apply(_url_host).value_counts().head(12)
             st.markdown('**Top source hosts available for enquiry**')
-            st.dataframe(
-                pd.DataFrame({'Host': host_counts.index, 'Tenders': host_counts.values}),
-                use_container_width=True,
-            )
+            if not host_counts.empty:
+                host_df = host_counts.reset_index()
+                host_df.columns = ['Host', 'Tenders']
+                fig_hosts = px.bar(
+                    host_df,
+                    x='Tenders', y='Host', orientation='h', height=360,
+                    color='Tenders', color_continuous_scale=['#D4EAF7', '#0E8C8C', '#0D1B2A'],
+                )
+                fig_hosts.update_layout(margin=dict(t=12, b=12, l=0, r=0), showlegend=False)
+                fig_hosts.update_traces(texttemplate='%{x}', textposition='outside')
+                st.plotly_chart(fig_hosts, use_container_width=True)
             st.markdown('---')
-            sample_candidates = source_url_df.sort_values('source').head(120).copy()
+            st.markdown('''
+                **Manual enrichment search**
+                Use a company keyword, source portal, or vendor name fragment to narrow candidates.
+            ''')
+            query = st.text_input(
+                'Search tender sources by company keyword',
+                placeholder='Example: L&T, Tata, JMC, GEM, bidplus',
+                key='company_enrichment_query'
+            )
+            filtered_df = source_url_df.copy()
+            if query:
+                mask = (
+                    filtered_df['title'].str.contains(query, case=False, na=False) |
+                    filtered_df['source'].str.contains(query, case=False, na=False) |
+                    filtered_df['source_url_clean'].str.contains(query, case=False, na=False)
+                )
+                filtered_df = filtered_df[mask].copy()
+                st.markdown(f'**Found {len(filtered_df):,} matching tender records for** "{query}"')
+                if filtered_df.empty:
+                    st.warning('No matching tenders were found for that keyword. Try a different company or portal term.')
+            st.markdown('---')
+            sample_candidates = filtered_df.sort_values('source').head(120).copy()
             sample_candidates['label'] = sample_candidates.apply(
                 lambda r: f"{r['tender_id']} | {r['source']} | {r['title'][:60]}", axis=1
             )
@@ -1371,6 +1435,7 @@ with tab5:
                 st.markdown(f"**Tender:** {selected_row['tender_id']} — {selected_row['source']}")
                 st.markdown(f"**Status:** {selected_row['status']}  ")
                 st.markdown(f"**Source URL:** {selected_row['source_url_clean']}")
+                selected_candidates = []
                 if _is_pdf_url(selected_row['source_url_clean']):
                     st.info('This source URL points to a PDF. PDF contractor extraction is not yet supported.')
                 else:
@@ -1380,12 +1445,47 @@ with tab5:
                             st.error(f'Unable to fetch page: {error}')
                         else:
                             candidates = extract_company_candidates(html)
+                            st.session_state['company_candidates'] = candidates
+                            st.session_state['company_candidates_source_url'] = selected_row['source_url_clean']
                             if candidates:
-                                st.markdown('**Candidate company names found on the page:**')
-                                for cand in candidates:
-                                    st.markdown(f'- {cand}')
+                                st.success(f'Found {len(candidates)} candidate names.')
                             else:
                                 st.info('No obvious contractor text patterns were detected on this page.')
+
+                if st.session_state.get('company_candidates_source_url') == selected_row['source_url_clean']:
+                    selected_candidates = st.session_state.get('company_candidates', []) or []
+
+                if selected_candidates:
+                    st.markdown('**Candidate company names found on the page:**')
+                    for cand in selected_candidates:
+                        st.markdown(f'- {cand}')
+
+                selected_candidate = None
+                if selected_candidates:
+                    selected_candidate = st.selectbox(
+                        'Choose a candidate to save as contractor',
+                        [None] + selected_candidates,
+                        format_func=lambda v: v if v else 'Select candidate',
+                        key='selected_contractor_candidate',
+                    )
+
+                manual_contractor_name = st.text_input(
+                    'Or enter a contractor name manually',
+                    placeholder='Type contractor name here',
+                    key='manual_contractor_name',
+                )
+
+                if st.button('Save contractor name to tender', key=f"save_contract_{selected_row['tender_id']}"):
+                    contractor_name = (manual_contractor_name or selected_candidate or '').strip()
+                    if not contractor_name:
+                        st.warning('Please choose a candidate or enter a manual contractor name.')
+                    else:
+                        success, message = _persist_contractor_name(selected_row['tender_id'], contractor_name)
+                        if success:
+                            st.success(message)
+                        else:
+                            st.error(message)
+
             st.markdown('---')
             st.markdown(
                 'If you have a company name from another source, use it to search outside this dashboard. '
@@ -1397,7 +1497,7 @@ with tab5:
 with tab3:
 
     # ── Sector Breakdown Bar ───────────────────────────────────────────────────
-    st.markdown('<div class="section-label">📊 Sector Breakdown</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Sector Breakdown</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
         'All 14 sector buckets ranked by tender count. "Unclassified" groups tenders '
@@ -1427,7 +1527,7 @@ with tab3:
 
     # ── Treemap (where budget available) ──────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-label">🌳 Budget Treemap — State → Sector</div>',
+    st.markdown('<div class="section-label">Budget Treemap — State → Sector</div>',
                 unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
@@ -1435,7 +1535,7 @@ with tab3:
         'Only the 8,355 tenders (20%) with valid budget data appear here. '
         'Bihar and Coal India dominate because those portals report amounts more consistently.'
         '</div>', unsafe_allow_html=True)
-    st.markdown('<div class="data-note">📊 Shows only the 20% of tenders that report a budget amount.</div>',
+    st.markdown('<div class="data-note">Shows only the 20% of tenders that report a budget amount.</div>',
                 unsafe_allow_html=True)
 
     treemap_df = _treemap_data_cached(budget_df, len(budget_df))
@@ -1462,7 +1562,7 @@ with tab3:
 
     # ── Sankey (by count) ─────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-label">🌊 Budget Flow — Portal → State → Sector</div>',
+    st.markdown('<div class="section-label">Budget Flow — Portal → State → Sector</div>',
                 unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
@@ -1506,7 +1606,7 @@ with tab3:
 
     # ── Timeline ──────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-label">⏱️ Tender Activity Timeline</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Tender Activity Timeline</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
         'Monthly tender count based on start_date (falls back to scraped_at if start_date missing). '
@@ -1549,7 +1649,7 @@ with tab3:
 
     # ── Leader Boards ─────────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-label">🏅 Leader Boards</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Leader Boards</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
         'Top departments by tender count (left) and top awarded contractors by budget (right). '
@@ -1559,7 +1659,7 @@ with tab3:
     lb1, lb2 = st.columns(2)
 
     with lb1:
-        st.markdown("**🏢 Top 10 Departments by Tender Count**")
+        st.markdown("**Top 10 Departments by Tender Count**")
         dept_lb = (df.groupby("department").size()
                      .nlargest(10).reset_index(name="Tenders")
                      .rename(columns={"department":"Dept"})
@@ -1576,7 +1676,7 @@ with tab3:
         st.plotly_chart(fig_dept, use_container_width=True)
 
     with lb2:
-        st.markdown("**👷 Top Contractors by Awarded Budget (₹ Cr)**")
+        st.markdown("**Top Contractors by Awarded Budget (₹ Cr)**")
         contr_df = budget_df[
             budget_df["contractor_name"].notna() &
             (budget_df["contractor_name"] != "—") &
@@ -1602,7 +1702,7 @@ with tab3:
     st.markdown("---")
     rc1, rc2 = st.columns(2)
     with rc1:
-        st.markdown("**📊 Tender Status Split**")
+        st.markdown("**Tender Status Split**")
         st.caption("Share of Active / Awarded / Completed tenders.")
         stat_df = df["status"].value_counts().reset_index()
         stat_df.columns = ["Status","Count"]
@@ -1614,7 +1714,7 @@ with tab3:
         st.plotly_chart(fig_status, use_container_width=True)
 
     with rc2:
-        st.markdown("**📈 Budget Distribution (₹ Cr)**")
+        st.markdown("**Budget Distribution (₹ Cr)**")
         st.caption(f"Only the {len(budget_df):,} tenders with reported budget. "
                    "Typical log-normal: many small, a few very large.")
         if not budget_df.empty:
@@ -1635,7 +1735,7 @@ with tab3:
 with tab4:
 
     # ── Source Portal Analysis (FIX-03: top 15 + Others) ──────────────────────
-    st.markdown('<div class="section-label">🔌 Portal Coverage Analysis</div>',
+    st.markdown('<div class="section-label">Portal Coverage Analysis</div>',
                 unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
@@ -1680,7 +1780,7 @@ with tab4:
 
     # ── Full Tender Table ──────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-label">📄 Full Tender Registry</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Full Tender Registry</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
         'Every tender in the current filter. Budget shown in ₹ Crores '
@@ -1733,7 +1833,7 @@ with tab4:
 
     dl1, dl2 = st.columns([1,4])
     with dl1:
-        st.download_button("⬇️ Download CSV", data=csv_data,
+        st.download_button("Download CSV", data=csv_data,
                            file_name=f"divyadrishti_{drill_level}.csv",
                            mime="text/csv", use_container_width=True)
     with dl2:
@@ -1742,7 +1842,7 @@ with tab4:
 
     # ── Portal Health Log ──────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown('<div class="section-label">📡 Portal Health Log</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Portal Health Log</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-desc">'
         'Each scraping run is logged: portal, success/failure, records retrieved, and timestamp. '
@@ -1753,7 +1853,7 @@ with tab4:
         if _health is not None and not _health.empty:
             _health_disp = _health[["source","status","records_fetched","error_msg","logged_at"]].copy()
             _health_disp["status"] = _health_disp["status"].apply(
-                lambda s: "✅ ok" if s == "ok" else f"❌ {s}")
+                lambda s: "OK" if s == "ok" else f"FAIL ({s})")
             st.dataframe(
                 _health_disp.sort_values("logged_at", ascending=False).head(50),
                 use_container_width=True, height=340, hide_index=True,
