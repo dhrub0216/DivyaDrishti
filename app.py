@@ -84,8 +84,12 @@ _logo_path = Path(__file__).parent / "assets" / "logo_eye.svg"
 _logo_svg  = _logo_path.read_text() if _logo_path.exists() else ""
 
 def _logo(size: int = 56) -> str:
-    """Return the eye logo SVG with explicit width/height for inline embedding."""
-    return _logo_svg.replace("<svg ", f'<svg width="{size}" height="{size}" ', 1)
+    """Return the eye logo as a base64 img tag — avoids Streamlit's markdown parser mangling raw SVG."""
+    if not _logo_svg:
+        return ""
+    import base64
+    b64 = base64.b64encode(_logo_svg.encode()).decode()
+    return f'<img src="data:image/svg+xml;base64,{b64}" width="{size}" height="{size}" style="display:block;"/>'
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 ALL               = "All"
