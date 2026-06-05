@@ -971,11 +971,14 @@ with tab1:
     st.markdown(
         '<div class="section-desc">Every dot is a tender. Colour = sector. '
         'Roads and pipelines draw as coloured lines. '
-        'Zoom in to district level for project-site precision.</div>',
+        'Zoom in to district level for project-site precision. '
+        'In scatter mode, use the <strong>box-select</strong> or <strong>lasso-select</strong> '
+        'toolbar icons to pick tenders — a detail panel appears below the map.</div>',
         unsafe_allow_html=True,
     )
 
     map_col, info_col = st.columns([4, 1])
+    map_event = None  # populated in scatter mode via on_select
     view = get_view_config(
         df,
         selected_state    if selected_state    != ALL else None,
@@ -1016,9 +1019,13 @@ with tab1:
                            df_plot.get("longitude2", pd.Series(dtype=float)).notna())
             df_lines  = df_plot[linear_mask] if "latitude2" in df_plot.columns else df_plot.iloc[0:0]
             df_points = df_plot[~linear_mask] if "latitude2" in df_plot.columns else df_plot
+            # Attach original df index so selection events can recover full rows
+            df_points = df_points.copy()
+            df_points["_orig_idx"] = df_points.index.tolist()
+            _src = df_points if not df_points.empty else df_plot
 
             fig_map = px.scatter_mapbox(
-                df_points if not df_points.empty else df_plot,
+                _src,
                 lat="latitude", lon="longitude",
                 size="bubble", color="sector_display",
                 color_discrete_map={**SECTOR_COLORS, "Unclassified":"#AAAAAA"},
@@ -1029,6 +1036,7 @@ with tab1:
                             "state":True,"district":True,
                             "bubble":False,"latitude":False,"longitude":False},
                 labels={"amt_fmt":"Budget","sector_display":"Sector"},
+                custom_data=["_orig_idx"],
             )
             fig_map.update_traces(marker=dict(opacity=0.85))
 
@@ -1062,8 +1070,17 @@ with tab1:
         fig_map.update_layout(
             margin=dict(l=0,r=0,t=0,b=0),
             legend=dict(orientation="h", yanchor="bottom", y=1.01,
-                        xanchor="right", x=1, font=dict(size=10)))
-        st.plotly_chart(fig_map, use_container_width=True)
+                        xanchor="right", x=1, font=dict(size=10)),
+            dragmode="pan",
+        )
+        if render_mode == "scatter":
+            map_event = st.plotly_chart(
+                fig_map, use_container_width=True,
+                on_select="rerun",
+                selection_mode=("points", "box", "lasso"),
+            )
+        else:
+            st.plotly_chart(fig_map, use_container_width=True)
 
     with info_col:
         st.markdown("#### View Info")
@@ -1092,6 +1109,64 @@ with tab1:
             st.markdown(f"**Top {grp.title()}s**")
             for name, cnt in top5.items():
                 st.caption(f"{str(name)[:18]}: {cnt:,}")
+
+    # ── Map Selection Panel ────────────────────────────────────────────────────
+    if render_mode == "scatter":
+        st.markdown("---")
+        sel_pts = (
+            map_event.selection.points
+            if map_event and hasattr(map_event, "selection") and map_event.selection
+            else []
+        )
+
+        if not sel_pts:
+            st.markdown(
+                '<div class="data-note">'
+                'Select tenders on the map using the <strong>box-select</strong> (&#9645;) '
+                'or <strong>lasso-select</strong> (&#9676;) toolbar icons — '
+                'a detailed table will appear here.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            orig_idx = [p["customdata"][0] for p in sel_pts if p.get("customdata")]
+            sel_df   = df.loc[df.index.isin(orig_idx)].copy()
+            n        = len(sel_df)
+
+            # Summary KPIs
+            s1, s2, s3, s4, s5 = st.columns(5)
+            s1.metric("Selected Tenders",   f"{n:,}")
+            s2.metric("Sectors",            sel_df["sector_display"].nunique())
+            s3.metric("States",             sel_df["state"].nunique())
+            s4.metric("With Budget",        int(sel_df["has_budget"].sum()))
+            s5.metric("Total Budget (₹ Cr)", f"{sel_df[sel_df['has_budget']]['amount_cr'].sum():,.1f}")
+
+            st.markdown(
+                f'<div class="section-label">Selected Tenders — {n:,} records</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Detail table
+            _cols = ["title","sector_display","state","district","status","amount_cr","department"]
+            _existing = [c for c in _cols if c in sel_df.columns]
+            disp = sel_df[_existing].copy()
+            disp["title"]      = disp["title"].str[:80]
+            disp["amount_cr"]  = disp["amount_cr"].apply(
+                lambda x: f"₹{x:,.2f} Cr" if pd.notna(x) and x else "—")
+            disp.columns = ["Title","Sector","State","District","Status","Budget (₹ Cr)","Department"][: len(_existing)]
+            st.dataframe(disp, use_container_width=True, hide_index=True,
+                         height=min(420, 46 + 36 * n))
+
+            # Download
+            dl1, dl2 = st.columns([1, 5])
+            with dl1:
+                st.download_button(
+                    "Download Selection",
+                    data=sel_df.to_csv(index=False),
+                    file_name="map_selection.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
